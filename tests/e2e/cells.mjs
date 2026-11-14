@@ -42,6 +42,17 @@ await step('double tap edits in the formula bar; typed text is saved; Enter move
   assert.deepEqual(await sel(), [3, 1, 3, 1]); // moved to B4, still editing-ready
 });
 
+await step('two quick taps on neighbouring rows select, they are not a double tap', async () => {
+  await page.keyboard.press('Escape');
+  const a = await at('C11');
+  const b = await at('C12');
+  await T.tap(a.x, a.y - 4); // 20 px apart, 100 ms: inside the double-tap distance and time
+  await T.tap(b.x, b.y - 8);
+  await page.waitForTimeout(200);
+  assert.deepEqual(await sel(), [11, 2, 11, 2]);
+  assert.equal((await focus()).editable, false);
+});
+
 await step('after an edit a single tap still does not focus anything editable', async () => {
   await page.keyboard.press('Escape');
   await tap('D9');

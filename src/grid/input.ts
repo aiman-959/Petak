@@ -470,7 +470,9 @@ export class GridInput {
   // ------------------------------------------------------------------ gestures
   private async tap(x: number, y: number, hit: GridHit, downAt: number, fed = false) {
     const now = performance.now();
-    const double = !!this.lastTap && downAt - this.lastTap.t < DOUBLE_MS && Math.hypot(this.lastTap.x - x, this.lastTap.y - y) < DOUBLE_PX;
+    // a double tap is two quick taps on the same cell: a fast tap on the next row (24 px away) is not one
+    const same = !!this.lastTap && this.lastTap.hit.area === hit.area && this.lastTap.hit.row === hit.row && this.lastTap.hit.col === hit.col;
+    const double = !!this.lastTap && same && downAt - this.lastTap.t < DOUBLE_MS && Math.hypot(this.lastTap.x - x, this.lastTap.y - y) < DOUBLE_PX;
     this.lastTap = double ? null : { t: now, x, y, hit };
     if (fed) {
       // drawing mode: a tap only moves the cell selection
