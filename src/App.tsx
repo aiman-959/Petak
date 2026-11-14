@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { initFonts } from './fonts/fonts';
 import { useDraw } from './draw/state';
 import './grid/view';
 import { governor } from './device/governor';
@@ -29,6 +30,7 @@ const WhatIfDialog = lazy(() => import('./features/AnalysisDialogs').then((m) =>
 const SlicersDialog = lazy(() => import('./features/AnalysisDialogs').then((m) => ({ default: m.SlicersDialog })));
 const DataModelDialog = lazy(() => import('./datamodel/DataModelDialog'));
 const DrawLayer = lazy(() => import('./draw/DrawLayer'));
+const FontsDialog = lazy(() => import('./fonts/FontsDialog'));
 const ValidationDialog = lazy(() => import('./review/ReviewDialogs').then((m) => ({ default: m.ValidationDialog })));
 
 export default function App() {
@@ -52,6 +54,7 @@ export default function App() {
       (window as unknown as { __booted?: boolean }).__booted = true;
       const q = new URLSearchParams(location.search);
       const mobile = q.has('desktop') ? false : q.has('mobile') || isTouchDevice();
+      await initFonts(() => doc.fontsChanged());
       doc.init(host.current!, mobile);
       const restored = !q.has('fresh') && (await doc.restoreSession().catch(() => false));
       if (!restored) await doc.newWorkbook();
@@ -152,6 +155,7 @@ export default function App() {
           {dialog === 'slicers' && <SlicersDialog />}
           {dialog === 'datamodel' && <DataModelDialog />}
           {dialog === 'link' && <LinkDialog />}
+          {dialog === 'fonts' && <FontsDialog />}
           {dialog === 'picture' && <PictureViewer />}
         </Suspense>
       )}

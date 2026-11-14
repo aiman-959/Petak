@@ -59,3 +59,4 @@ Assets are stored deflate-compressed in the APK (roughly the gzip column).
 - Unused Java/Kotlin code and resources (R8 `minifyEnabled` + `shrinkResources`).
 - One font file only: Space Grotesk Bold, Latin subset (13 kB), for the wordmark; the UI uses the system font.
 - Source maps are not shipped; JavaScript is minified and tree-shaken, features are split into lazy chunks and workers.
+- Since the fonts work (K-06): 80 font files, 2.4 MB in total (woff2, already compressed), for the Excel font substitutes (Carlito, Caladea, Arimo, Tinos, Cousine; regular / bold / italic / bold italic; Latin, Latin Extended, Cyrillic, Greek). Each is fetched from the app only when a workbook uses it. The table above is from before that change; the next release build regenerates it.

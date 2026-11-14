@@ -22,6 +22,8 @@ import { notesResource, RES_DV } from '../io/review';
 import { pictures, setCellPictures, clearCellPictures } from '../pictures/pictures';
 import { kv } from './storage';
 import { Compositor } from '../grid/compositor';
+import { invalidateDocumentFontMetrics } from '@univerjs/engine-render';
+import { ensureFonts, fontReport, reportText } from '../fonts/fonts';
 import { GridInput, type GridInputHooks } from '../grid/input';
 import { cfFromUniver, cfToUniver, type UCfRule } from '../univer/cf';
 import { getTier } from '../device/tier';
@@ -390,6 +392,8 @@ class Doc {
     ui.progress(1, 1, 'Building grid');
     await new Promise((r) => setTimeout(r, 0));
     this.loading = true;
+    // before the old workbook goes away: there is never a moment without a workbook
+    await this.prepareFonts({ styles: res.styles, sheets, defaultStyle: res.defaultStyle } as Partial<IWorkbookData>);
     this.disposeCurrent();
     const unitId = 'wb' + Date.now().toString(36);
     const resources: Array<{ name: string; data: string }> = (res.resources ?? []).map((r) => (r.name === RES_THREADS ? { ...r, data: withUnitId(r.data, unitId) } : r));
@@ -595,6 +599,7 @@ class Doc {
     if (!s) return false;
     const extra = s.extra as { meta: AppMeta; cf: CfEntry[]; file: FileInfo; dirty: boolean; names?: NameDef[]; pictures?: typeof pictures.list; addedMedia?: string[] };
     this.loading = true;
+    await this.prepareFonts(s.data as Partial<IWorkbookData>);
     this.disposeCurrent();
     const fwb = this.h.api.createWorkbook(s.data);
     this.meta = { ...emptyMeta(), ...extra.meta };
@@ -622,6 +627,52 @@ class Doc {
   }
 
   /** Push metadata that affects rendering (sparklines) to the renderers. */
+  /** what happened to the fonts of the open file (substitutes, missing), for the "Opened" message */
+  fontNotice: string | null = null;
+  /** Fonts must be loaded before the workbook is measured, or text is laid out with fallback widths. */
+  private async prepareFonts(data: Partial<IWorkbookData>) {
+    const names = new Set<string>();
+    const ff = (st: unknown) => {
+      const f = (st as { ff?: string } | null | undefined)?.ff;
+      if (f) names.add(f);
+    };
+    ff(data.defaultStyle);
+    for (const st of Object.values(data.styles ?? {})) ff(st);
+    // scripts beyond Latin (Cyrillic, Greek…) live in separate font files: sample some text
+    const extra = new Set<string>();
+    let seen = 0;
+    scan: for (const sh of Object.values(data.sheets ?? {})) {
+      for (const row of Object.values((sh?.cellData ?? {}) as Record<number, Record<number, ICellData>>)) {
+        for (const c of Object.values(row)) {
+          ff(c?.s);
+          if (typeof c?.v === 'string') for (const ch of c.v) if (ch.charCodeAt(0) > 0xff && ch.charCodeAt(0) < 0x2e80) extra.add(ch);
+          if (++seen > 4000 || extra.size > 150) break scan;
+        }
+      }
+    }
+    if (!names.size) names.add('Arial');
+    await ensureFonts(names, [...extra].join(''));
+    this.fontNotice = reportText(fontReport(names));
+  }
+  private fontTimer: ReturnType<typeof setTimeout> | undefined;
+  /** A font finished loading (or was added / removed): measure text again and redraw. */
+  fontsChanged() {
+    clearTimeout(this.fontTimer);
+    this.fontTimer = setTimeout(() => {
+      if (this.loading) return;
+      try {
+        invalidateDocumentFontMetrics(() => true);
+        const ws = this.wb.getActiveSheet();
+        const sk = ws.getSkeleton() as unknown as { makeDirty?(d: boolean): void; calculate?(): void } | null;
+        sk?.makeDirty?.(true);
+        sk?.calculate?.();
+        ws.refreshCanvas();
+      } catch {
+        /* no workbook yet */
+      }
+    }, 80);
+  }
+
   syncMetaRenderers() {
     setSparklines(this.meta.sparklines ?? []);
     setDrawings(this.meta.drawings, this.meta.drawUnit ?? 'mm');

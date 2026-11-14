@@ -66,6 +66,7 @@ export function ToolPanel({ tab }: { tab: ToolTab }) {
           <div className="group">
             <h4>Text</h4>
             <div className="btn-grid">
+              <Tool icon={<Type />} label="Font & size" testId="tool-fonts" onClick={() => ui.open('fonts')} />
               <Tool icon={<Bold />} label="Bold" on={sel.bold} testId="fmt-bold" onClick={run(fmt.bold)} />
               <Tool icon={<Italic />} label="Italic" on={sel.italic} onClick={run(fmt.italic)} />
               <Tool icon={<Underline />} label="Underline" onClick={run(fmt.underline)} />

@@ -50,7 +50,7 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | K-03 | High | Line tool does not behave as press, drag, release on the phone | Fixed (`draw-touch.mjs`; emulator run 23 draws a line by press–drag–release) |
 | K-04 | High | Nothing snaps when a shape starts in the middle of a cell | Fixed (`draw.test.ts`, `draw-touch.mjs`) |
 | K-05 | High | Scrolling and pinch zoom are slow and stutter | Partly: GPU compositor works in e2e; device fps not measured yet |
-| K-06 | High | Excel fonts do not display correctly | Open |
+| K-06 | High | Excel fonts do not display correctly | Fixed (`fonts.mjs`, `fonts.test.ts`); look on a phone still to check |
 | K-07 | High | Opening another file does nothing on the phone | Open |
 | K-08 | High | Grid lines and borders are broken / faded at zoom ≠ 100 % | Open |
 | K-09 | High | Hyperlinks load as plain text | Fixed (`cells2.mjs`) |
@@ -201,6 +201,7 @@ Device-only observations (emulator) are in the section "On a real Android WebVie
 - **Planned fix:** metric-compatible substitutes (Carlito, Caladea, Liberation Sans/Serif/Mono,
   Noto Sans CJK), downloaded on first use with the size shown, own fonts via Settings → Fonts,
   a notice when a substitute is used; original font names are saved back unchanged.
+- **Fixed:** Carlito, Caladea, Arimo, Tinos and Cousine are in the app (2.4 MB, no download needed, works offline) and registered under the Excel names, so the grid asks for "Calibri" and gets Carlito: same widths, and files keep the original names. A font really installed on the device wins. Latin, Latin Extended, Cyrillic and Greek; each file loads only when used, before the workbook is measured. CJK uses the system's Noto Sans CJK. The "Opened" message says which fonts are substituted or missing. Format → Font & size: font and size for the selection, and adding your own .ttf / .otf / .woff / .woff2 files (kept on the device). Tests: `fonts.mjs`, `fonts.test.ts`.
 
 ### K-07 Opening another file does nothing
 - **Steps:** open a file, then open a second one. Works in the browser build (`audit1.mjs`: canvas changes). See device run for the phone.

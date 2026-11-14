@@ -40,7 +40,7 @@ export const fileActions = {
       const f = await pickFile();
       if (!f) return;
       const ok = await doc.open(f, { progress: ui.progress, confirm: ui.confirm });
-      if (ok) ui.toast(`Opened ${f.name}`);
+      if (ok) ui.toast(`Opened ${f.name}` + (doc.fontNotice ? `. ${doc.fontNotice}` : ''));
     }),
   save: () => guard(() => doc.save(), 'Saved'),
   saveAs: (fmt: FileFormat) => guard(() => doc.saveAs(fmt), 'Saved'),
