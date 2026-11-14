@@ -1007,7 +1007,9 @@ export default function DrawLayer() {
       const tap = !g.moved;
       const first = v && { x: v.ox + c.pts[0].x * v.zoom, y: v.oy + c.pts[0].y * v.zoom };
       if (tap && c.pts.length >= 3 && first && Math.hypot(screen.x - first.x, screen.y - first.y) < CLOSE_PX) return finishChain(true);
-      if (tap && last && now - last.t < DOUBLE_MS && Math.hypot(screen.x - last.p.x, screen.y - last.p.y) < DOUBLE_PX) return finishChain();
+      // double tap: this press came soon after the last release (as in the grid's touch layer;
+      // measuring release to release misses slow taps, e.g. on Android's input pipeline)
+      if (tap && last && g.t - last.t < DOUBLE_MS && Math.hypot(screen.x - last.p.x, screen.y - last.p.y) < DOUBLE_PX) return finishChain();
       const prev = c.pts[c.pts.length - 1];
       if (Math.hypot(p.x - prev.x, p.y - prev.y) > 0.5) c.pts.push(p);
       rerender();

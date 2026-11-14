@@ -48,7 +48,7 @@ Also done: formula argument hints, numeric keyboard for number cells, Enter move
 | Suite | Result |
 |---|---|
 | Unit (Vitest, 15 files) | 121 / 121 |
-| `tests/e2e/draw-touch.mjs` (new, phone, touch) | 23 / 23 |
+| `tests/e2e/draw-touch.mjs` (new, phone, touch) | 24 / 24 |
 | `tests/e2e/part3.mjs` (tablet, mouse) | 18 / 18 |
 | `tests/e2e/features.mjs` | 19 / 19 |
 | `tests/e2e/part2.mjs` | 16 / 16 |
@@ -62,8 +62,13 @@ formula-bar editor instead of selecting the cell, so the "Open link" button neve
 second step fails as a consequence. To investigate next (likely the tap after a file open being taken
 as a second tap on the already-active cell).
 
-The Android emulator job has not been rerun. `MainActivity.java` changed (Back button asks the
-page first) and could not be compiled here (no Android SDK): the CI `android` job is its first build.
+CI run 23 (this branch): APK build passed (so the `MainActivity` Back change compiles) and the
+emulator job ran. On the Android WebView: line by press–drag–release, rectangle fit to cells with
+the tool back to Select, tap selects the rectangle; **the polyline double tap did not finish** with
+`adb` taps (timed release to release). Fixed (timed from the second press, as in the grid) with a
+new slow-double-tap test; the next CI run should show the polyline finished. Opening a second file
+from the picker worked on the emulator (K-07 not reproduced there either). "Open with" still opens
+nothing new (C-04) and `.xls` has no VIEW handler.
 
 ## Still open in Phase 2
 

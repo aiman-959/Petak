@@ -47,7 +47,7 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | C-07 | Critical | Dates in Jan–Feb 1900 are one day off (`=DATE(1900,2,29)`) | Fixed (unit tests) |
 | K-01 | High | Shapes cannot be selected after drawing, so cannot be deleted | Fixed (`draw-touch.mjs`, `part3.mjs`) |
 | K-02 | High | Polyline: adds a point on every tap, hard to finish | Fixed (`draw-touch.mjs`) |
-| K-03 | High | Line tool does not behave as press, drag, release on the phone | Fixed in the browser (`draw-touch.mjs`); device run pending |
+| K-03 | High | Line tool does not behave as press, drag, release on the phone | Fixed (`draw-touch.mjs`; emulator run 23 draws a line by press–drag–release) |
 | K-04 | High | Nothing snaps when a shape starts in the middle of a cell | Fixed (`draw.test.ts`, `draw-touch.mjs`) |
 | K-05 | High | Scrolling and pinch zoom are slow and stutter | Partly: GPU compositor works in e2e; device fps not measured yet |
 | K-06 | High | Excel fonts do not display correctly | Open |
@@ -164,13 +164,13 @@ Device-only observations (emulator) are in the section "On a real Android WebVie
   the double-tap window is 350 ms / 14 px and the first tap of the double tap adds a stray point.
 - **Planned fix:** "Done" and "Undo point" buttons next to the finger, double tap (without a stray
   point), tap the first point to close, Back cancels.
-- **Fixed:** a point is placed when the finger lifts (rubber band while it is down); double tap finishes without a stray point; tapping the first point closes the shape (`closed`, can be filled); chips Undo point / Cancel / Done above the bottom bar; Back and Escape cancel. Tests: `draw-touch.mjs` (three K-02 steps).
+- **Fixed:** a point is placed when the finger lifts (rubber band while it is down); double tap finishes without a stray point; tapping the first point closes the shape (`closed`, can be filled); chips Undo point / Cancel / Done above the bottom bar; Back and Escape cancel. Tests: `draw-touch.mjs` (four K-02 steps). The first emulator run (CI run 23) showed the double tap not finishing with `adb` taps: it was timed release to release; it is now timed from the first release to the second press, like the grid's double tap, with a test for a slow second tap.
 
 ### K-03 Line tool is not press–drag–release on the phone
 - **Steps:** Draw → Line, press, drag, release. Works in touch emulation; reported as tap-to-tap on the phone (see device run).
 - **Planned fix:** handle raw touch events (not only pointer events) with `touch-action: none`,
   ignore `pointercancel` caused by the WebView's own gesture detection, live preview while dragging.
-- **Fixed in the browser:** every drawing tool is press, drag (live preview, length · angle label), release. A second finger within 250 ms cancels the shape and pinches instead; later it turns snapping off while it rests. If the WebView cancels the pointer mid-shape, the gesture carries on with the raw touch events instead of being lost. The overlay hands pans, flings, pinches and cell taps to the grid's touch layer, so the sheet scrolls exactly as outside drawing mode. Tests: `draw-touch.mjs`. Still to confirm on the emulator / phone.
+- **Fixed in the browser:** every drawing tool is press, drag (live preview, length · angle label), release. A second finger within 250 ms cancels the shape and pinches instead; later it turns snapping off while it rests. If the WebView cancels the pointer mid-shape, the gesture carries on with the raw touch events instead of being lost. The overlay hands pans, flings, pinches and cell taps to the grid's touch layer, so the sheet scrolls exactly as outside drawing mode. Tests: `draw-touch.mjs`. Emulator (Android 14 WebView, `adb input swipe`): line drawn by press–drag–release, rectangle fits cells and the tool returns to Select, tap selects the rectangle (CI run 23).
 
 ### K-04 Nothing snaps when starting mid-cell
 - **Steps:** Draw → Rectangle, start in the middle of a cell. `audit2.mjs`.

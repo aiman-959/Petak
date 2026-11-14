@@ -199,6 +199,29 @@ await step('K-02: polyline points are placed on release; a double tap finishes w
   assert.equal((await ui()).tool, 'select');
 });
 
+await step('K-02: a slow double tap (long second press) still finishes', async () => {
+  await clearDrawing();
+  await arm('polyline');
+  await tapAt(100, 200);
+  await page.waitForTimeout(400);
+  await tapAt(220, 200);
+  await page.waitForTimeout(400);
+  // 150 ms between the taps, but the second finger rests 200 ms: release to release is 350 ms
+  const p = await at(200, 300);
+  await T.start([p]);
+  await page.waitForTimeout(100);
+  await T.end();
+  await page.waitForTimeout(150);
+  await T.start([p]);
+  await page.waitForTimeout(200);
+  await T.end();
+  await page.waitForTimeout(150);
+  const s = await last();
+  assert.equal(s?.type, 'polyline');
+  assert.equal(s.points.length, 3, JSON.stringify(s.points));
+  assert.equal(await page.$('[data-testid=draw-finish]'), null, 'finished');
+});
+
 await step('K-02: tapping the first point closes the polyline', async () => {
   await arm('polyline');
   await clearDrawing();
