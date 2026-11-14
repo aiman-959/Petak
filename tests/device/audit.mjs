@@ -100,17 +100,29 @@ await R.check('draw: tap the rectangle to select it', async () => {
   await sleep(800);
   return [await page.evaluate(() => !!document.querySelector('[data-testid=draw-props]')), await drawShapes()];
 });
-await R.check('draw: polyline 3 taps then double tap', async () => {
+await R.check('draw: polyline 3 taps then double tap (expect a 4-point polyline, Done button gone)', async () => {
+  // deselect first: the properties card of the selected rectangle covers the lower part of the sheet
+  await page.evaluate(() => window.__draw.select([]));
   await page.click('[data-testid=draw-tool-polyline]');
-  cal.tap(grid.x + 80, grid.y + 480);
-  await sleep(500);
-  cal.tap(grid.x + 160, grid.y + 520);
-  await sleep(500);
-  cal.tap(grid.x + 240, grid.y + 480);
+  // inside the free drawing area (below the tool bar, above the chips)
+  cal.tap(grid.x + 80, grid.y + 130);
+  await sleep(600);
+  cal.tap(grid.x + 160, grid.y + 180);
+  await sleep(600);
+  cal.tap(grid.x + 240, grid.y + 130);
   await sleep(700);
-  cal.doubleTap(grid.x + 300, grid.y + 520);
+  cal.doubleTap(grid.x + 300, grid.y + 200);
   await sleep(1000);
-  return [await drawShapes(), await page.isVisible('[data-testid=draw-finish]')];
+  return [await drawShapes(), await page.isVisible('[data-testid=draw-finish]'), await page.evaluate(() => document.querySelector('[data-testid=draw-mode-chip]')?.textContent)];
+});
+await R.check('draw: Back button (keyevent 4) leaves drawing mode step by step', async () => {
+  const before = await page.evaluate(() => [window.__draw.get().selected.length, window.__draw.get().active]);
+  sh('input keyevent 4');
+  await sleep(600);
+  const mid = await page.evaluate(() => [window.__draw.get().selected.length, window.__draw.get().active]);
+  sh('input keyevent 4');
+  await sleep(600);
+  return [before, mid, await page.evaluate(() => [window.__draw.get().selected.length, window.__draw.get().active, document.visibilityState])];
 });
 screencap('draw-shapes');
 await page.click('[data-testid=draw-close]').catch(() => {});
