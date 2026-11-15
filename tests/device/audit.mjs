@@ -168,7 +168,16 @@ const openWith = async (name, mime) => {
   const question = asked ? await page.textContent('[data-testid=ask-text]').catch(() => '') : null;
   if (asked) await asked.click();
   await sleep(6000);
-  return { start: out.trim().split('\n').slice(-1)[0], asked: question, file: await page.evaluate(() => [window.__doc.snapshot.file.name, window.__doc.snapshot.sheets.map((s) => s.name), document.querySelector('.toast')?.textContent ?? null]).catch((e) => 'page: ' + e.message) };
+  const file = await page.evaluate(() => [window.__doc.snapshot.file.name, window.__doc.snapshot.sheets.map((s) => s.name), document.querySelector('.toast')?.textContent ?? null]).catch((e) => 'page: ' + e.message);
+  const res = { start: out.trim().split('\n').slice(-1)[0], asked: question, file };
+  if (typeof file === 'string') {
+    // the page is gone: restarted process? crashed renderer? killed for memory?
+    const safe = (f) => { try { return String(f()).trim().split('\n').slice(-16).join(' | ').slice(0, 3000); } catch (err) { return 'ERR ' + String(err.message).slice(0, 160); } };
+    res.pid = safe(() => sh(`pidof ${PKG}`));
+    res.mem = safe(() => sh(`dumpsys meminfo ${PKG} | grep -E "TOTAL PSS|TOTAL:" | head -2`));
+    res.log = safe(() => sh(`logcat -d -t 4000 | grep -iE "FATAL|AndroidRuntime: |Caused by|chromium.*(crash|kill|fatal|oom)|Renderer|render process|lowmemory|lmkd|am_kill|am_proc_died|Killing |has died|OutOfMemory|WebView.*(crash|gone)|aw_browser|cr_Child" | grep -v "lmkd.*init" | tail -16`));
+  }
+  return res;
 };
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 await R.check('"Open with" while the app is running (roster.xlsx; the open workbook has unsaved changes)', () => openWith('roster.xlsx', XLSX_MIME));
