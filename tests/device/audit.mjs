@@ -15,7 +15,7 @@ for (const f of fs.readdirSync(fixtures)) if (fs.statSync(path.join(fixtures, f)
 sh(`am force-stop ${PKG}`);
 launch();
 await sleep(6000);
-const { page } = await attach();
+const { page, device } = await attach();
 await page.waitForFunction(() => window.__doc?.snapshot?.sheets?.length > 0, null, { timeout: 90000 });
 await sleep(1500);
 screencap('launch');
@@ -155,17 +155,17 @@ const openViaPicker = async (name) => {
   await sleep(3000);
   let r;
   for (let i = 0; i < 5; i++) {
-    r = tapText(name);
+    r = await tapText(device, name);
     if (r === true) break;
     await sleep(1500);
   }
   if (r !== true) {
     // not in "Recent": open the Downloads root from the drawer
-    tapText('Show roots', { exact: false });
+    await tapText(device, 'Show roots', { exact: false }).then((x) => x === true || device.tap({ descContains: 'Show roots' }, { timeout: 2500 }).catch(() => {}));
     await sleep(1000);
-    tapText('Downloads');
+    await tapText(device, 'Downloads');
     await sleep(1500);
-    r = tapText(name);
+    r = await tapText(device, name);
     if (r !== true) {
       sh('input keyevent 4');
       return { picker: sh('dumpsys window | grep mCurrentFocus').trim(), ...r };
