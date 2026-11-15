@@ -217,7 +217,7 @@ await R.check('"Open with" (VIEW intent) opens legacy.xls', async () => {
   return [out.trim().split('\n').slice(-3).join(' | '), await page.evaluate(() => window.__doc.snapshot.file.name).catch((e) => 'page: ' + e.message)];
 });
 screencap('open-with');
-await R.check('resolve activities for .xls VIEW', () => sh('cmd package query-activities -a android.intent.action.VIEW -t application/vnd.ms-excel | grep -c petak || true').trim());
+await R.check('Petak is offered for a content:// .xls (count of matching lines, 0 = not offered)', () => sh('cmd package query-activities -a android.intent.action.VIEW -d content://media/external/file/1 -t application/vnd.ms-excel | grep -c petak || true').trim());
 R.save();
 console.log('device audit finished');
 process.exit(0);
