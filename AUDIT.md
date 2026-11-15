@@ -59,7 +59,7 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | K-12 | High | A single tap on a cell opens the keyboard | Fixed (`cells.mjs`) |
 | H-01 | High | No keyboard support at all: arrows, Shift/Ctrl+arrows, Delete, F2, Ctrl+C/X/V do nothing | Fixed (`cells.mjs`) |
 | H-02 | High | No copy / cut / paste anywhere in the phone UI; long press does nothing | Fixed (`cells.mjs`, `cells2.mjs`) |
-| H-03 | High | `.xls` files open without any formatting or frozen panes | Open |
+| H-03 | High | `.xls` files open without any formatting or frozen panes | Fixed (`biff.test.ts`, `files.mjs`); frozen panes read but no fixture has them |
 | H-04 | High | Autofilter in a file is not loaded | Fixed (unit + e2e) |
 | H-05 | High | Columns/rows cannot be resized by touch; no hide/unhide in the UI | Fixed (`cells.mjs`) |
 | H-06 | High | Unsaved-changes prompt cannot save: only "Continue" (discard) or cancel | Fixed (`files.mjs`) |
@@ -261,6 +261,7 @@ context menu (Cut, Copy, Paste, Paste special, Insert, Delete, Clear, Format, Li
 borders, sizes and frozen panes do not. **Fix:** read what SheetJS CE exposes (column widths, row
 heights, number formats, freeze panes, fills); tell the user formatting of old `.xls` files is
 limited; never save in place.
+**Fixed:** `src/io/biff.ts` reads the looks straight from the BIFF8 workbook stream (SheetJS CE only gives values): fonts, sizes, bold / italic / underline / strike, text and fill colours (with the file's palette), borders, alignment, wrap, column widths, row heights, hidden rows / columns, frozen panes. Blank cells that only have a fill or border are kept. The open message says charts, pictures and conditional formats are not shown; Save writes a new `.xlsx`. Frozen panes are read from the WINDOW2 / PANE records but the LibreOffice-made fixture has none, so that part is untested. Encrypted or pre-97 files open unformatted as before.
 
 ### H-04 Autofilter not loaded — see C-01; **fix:** load into Univer's filter.
 ### H-05 No touch resize, no hide/unhide

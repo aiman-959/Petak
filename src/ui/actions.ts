@@ -72,7 +72,9 @@ async function openFile(f: OpenedFile) {
   }
   if (!ok) return;
   void recent.add({ name: f.name, uri: f.uri, handle: f.handle });
-  ui.toast(`Opened ${f.name}` + (doc.fontNotice ? `. ${doc.fontNotice}` : ''));
+  // old .xls: say what is and is not shown (and that Save writes a new .xlsx)
+  const old = doc.snapshot.file.format === 'xls' ? doc.loadWarnings.find((w) => /\.xls/.test(w)) : undefined;
+  ui.toast(`Opened ${f.name}` + (old ? `. ${old}` : doc.fontNotice ? `. ${doc.fontNotice}` : ''));
 }
 
 export const fileActions = {

@@ -98,6 +98,7 @@ await step('recent files: listed newest first; one that is gone is explained and
   await page.click('[data-testid=menu-more]');
   await page.click('[data-testid=menu-recent]');
   await page.waitForSelector('[data-testid=dlg-recent]');
+  await page.waitForSelector('[data-testid=recent-item]');
   const items = await page.$$eval('[data-testid=recent-item] b', (els) => els.map((e) => e.textContent));
   assert.deepEqual(items, ['old.xlsx', 'gone.xlsx']);
   await page.click('[data-testid=recent-item] >> nth=1');
@@ -105,6 +106,31 @@ await step('recent files: listed newest first; one that is gone is explained and
   assert.match(msg, /“gone\.xlsx” could not be opened again/);
   assert.deepEqual(await ev(() => window.__recent.list().then((l) => l.map((x) => x.name))), ['old.xlsx']);
   assert.equal(await name(), 'people.csv');
+});
+
+await step('an old .xls opens with its fonts, colours, borders and sizes; Save writes a new .xlsx', async () => {
+  await page.waitForSelector('.toast', { state: 'detached', timeout: 15000 }).catch(() => {});
+  await pick(() => page.click('[data-testid=open]'), F('legacy.xls'));
+  await page.waitForFunction(() => window.__doc.snapshot.file.name === 'legacy.xls', null, { timeout: 30000 });
+  assert.match(await toast(), /Old \.xls format/);
+  const info = await ev(() => {
+    const ws = window.__doc.wb.getActiveSheet();
+    const st = (ref) => ws.getRange(ref).getCellStyleData();
+    return { a1: st('A1'), a3: st('A3'), c4: st('C4'), colA: ws.getColumnWidth(0), colB: ws.getColumnWidth(1), row1: ws.getRowHeight(0), row10: ws.getRowHeight(9) };
+  });
+  assert.equal(info.a1.bg.rgb, '#14532d');
+  assert.equal(info.a1.fs, 22);
+  assert.equal(info.a1.bl, 1);
+  assert.equal(info.a3.bg.rgb, '#fbbf24');
+  assert.ok(info.a3.bd?.b?.s, 'header border');
+  assert.ok(info.c4.bg?.rgb && info.c4.bd?.l, 'shift cell fill and border');
+  assert.ok(info.colB > info.colA * 2.5, JSON.stringify(info));
+  assert.equal(info.row1, 56);
+  await page.screenshot({ path: '/tmp/claude-0/-home-user-Petak/d2438ac6-d1d7-5083-8327-ceef5a77a0b0/scratchpad/xls.png' });
+  // Save never overwrites the .xls: it offers a new .xlsx
+  await typeIn('H20', 'edited');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-testid=save]')]);
+  assert.equal(dl.suggestedFilename(), 'legacy.xlsx');
 });
 
 await t.finish();

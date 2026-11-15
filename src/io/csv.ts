@@ -2,10 +2,14 @@
 import * as XLSX from 'xlsx';
 import type { ICellData, IWorksheetData } from '@univerjs/core';
 import type { LoadChunk, LoadResult, ParsedMeta } from './types';
+import { readBiffFormatting, type BiffInfo } from './biff';
+import { colWidthPx, maxDigitWidth } from './ooxml/read';
 
 export interface ParsedSheetJs {
   wb: XLSX.WorkBook;
   meta: ParsedMeta;
+  /** looks of a legacy .xls file (SheetJS reads only its values) */
+  biff?: BiffInfo | null;
 }
 
 export function parseWithSheetJs(buf: ArrayBuffer, name: string): ParsedSheetJs {
@@ -19,17 +23,49 @@ export function parseWithSheetJs(buf: ArrayBuffer, name: string): ParsedSheetJs 
     return { id: 'sheet' + (i + 1), name: isCsv ? name.replace(/\.[^.]+$/, '').slice(0, 31) || 'Sheet1' : n, rows: ref.e.r + 1, cols: ref.e.c + 1 };
   });
   const format = isCsv ? 'csv' : /\.ods$/i.test(name) ? 'ods' : 'xls';
-  return { wb, meta: { sheets, hasVba: false, format } };
+  let biff: BiffInfo | null = null;
+  if (format === 'xls') {
+    try {
+      biff = readBiffFormatting(buf);
+    } catch (e) {
+      console.warn('xls formatting not read', e);
+    }
+    // cells that only have a look (a filled or bordered blank cell) count towards the sheet size
+    for (const sh of biff?.sheets ?? []) {
+      const m = sheets[wb.SheetNames.indexOf(sh.name)];
+      if (m) {
+        m.rows = Math.max(m.rows, sh.maxRow + 1);
+        m.cols = Math.max(m.cols, sh.maxCol + 1);
+      }
+    }
+  }
+  return { wb, meta: { sheets, hasVba: false, format }, biff };
 }
 
 export function* streamSheetJs(p: ParsedSheetJs, chunkRows: number): Generator<LoadChunk, LoadResult> {
   const total = p.meta.sheets.reduce((a, s) => a + s.rows, 0) || 1;
   let done = 0;
-  const styles: Record<string, { n: { pattern: string } }> = {};
+  const styles: Record<string, Record<string, unknown>> = {};
   const fmtIds = new Map<string, string>();
+  const biff = p.biff ?? null;
+  const mdw = maxDigitWidth(biff?.defaultFont ?? {});
+  /** style id for a cell: its .xls look (XF) combined with its number format */
+  const styleId = (xf: number | undefined, z: string | undefined): string | undefined => {
+    const look = xf !== undefined ? biff?.styles[xf] : null;
+    if (!look && !z) return undefined;
+    const key = (look ? 'x' + xf : '') + (z ? '|' + z : '');
+    let id = fmtIds.get(key);
+    if (!id) {
+      id = 's' + fmtIds.size;
+      fmtIds.set(key, id);
+      styles[id] = { ...(look ?? {}), ...(z ? { n: { pattern: z } } : {}) };
+    }
+    return id;
+  };
   for (let i = 0; i < p.wb.SheetNames.length; i++) {
     const ws = p.wb.Sheets[p.wb.SheetNames[i]];
     const m = p.meta.sheets[i];
+    const bs = biff?.sheets.find((x) => x.name === p.wb.SheetNames[i]);
     const sheet: Omit<IWorksheetData, 'cellData'> = {
       id: m.id,
       name: m.name,
@@ -39,14 +75,28 @@ export function* streamSheetJs(p: ParsedSheetJs, chunkRows: number): Generator<L
       defaultColumnWidth: 88,
       defaultRowHeight: 24,
     } as never;
+    const rowData: Record<number, Record<string, unknown>> = {};
+    if (bs) {
+      const sx = sheet as unknown as Record<string, unknown>;
+      if (bs.defaultColChars) sx.defaultColumnWidth = Math.round(bs.defaultColChars * mdw + 5);
+      if (bs.defaultRowPt) sx.defaultRowHeight = Math.round((bs.defaultRowPt * 4) / 3);
+      const columnData: Record<number, { w?: number; hd?: number }> = {};
+      for (const [c, chars] of bs.colWidths) columnData[c] = { w: colWidthPx(chars, mdw) };
+      for (const c of bs.hiddenCols) columnData[c] = { ...(columnData[c] ?? {}), hd: 1 };
+      sx.columnData = columnData;
+      for (const [r, pt] of bs.rowHeights) rowData[r] = { h: Math.round(((pt * 4) / 3) * 100) / 100, ia: 0 };
+      for (const r of bs.hiddenRows) rowData[r] = { ...(rowData[r] ?? {}), hd: 1 };
+      if (bs.freeze) sx.freeze = { xSplit: bs.freeze.cols, ySplit: bs.freeze.rows, startRow: bs.freeze.rows || -1, startColumn: bs.freeze.cols || -1 };
+    }
     yield { kind: 'sheetStart', index: i, sheet };
     const dense = (ws as unknown as { '!data'?: XLSX.CellObject[][] })['!data'] ?? [];
     for (let r0 = 0; r0 < m.rows; r0 += chunkRows) {
       const chunk: Record<number, Record<number, ICellData>> = {};
       const r1 = Math.min(m.rows, r0 + chunkRows);
       for (let r = r0; r < r1; r++) {
-        const row = dense[r];
-        if (!row) continue;
+        const row = dense[r] ?? [];
+        const looks = bs?.cells.get(r);
+        if (!row.length && !looks) continue;
         const out: Record<number, ICellData> = {};
         for (let c = 0; c < row.length; c++) {
           const cell = row[c];
@@ -69,25 +119,31 @@ export function* streamSheetJs(p: ParsedSheetJs, chunkRows: number): Generator<L
             cd.v = String(cell.v);
             cd.t = 1;
           }
-          if (cell.z && cell.z !== 'General' && cell.t === 'n') {
-            const z = String(cell.z);
-            let id = fmtIds.get(z);
-            if (!id) {
-              id = 'n' + fmtIds.size;
-              fmtIds.set(z, id);
-              styles[id] = { n: { pattern: z } };
-            }
-            cd.s = id;
-          }
-          if (cd.v !== undefined || cd.f) out[c] = cd;
+          const z = cell.z && cell.z !== 'General' && cell.t === 'n' ? String(cell.z) : undefined;
+          const sid = styleId(looks?.get(c), z);
+          if (sid) cd.s = sid;
+          if (cd.v !== undefined || cd.f || cd.s) out[c] = cd;
         }
+        // cells with a look but no value (filled, bordered)
+        if (looks)
+          for (const [c, xf] of looks) {
+            if (out[c]) continue;
+            const sid = styleId(xf, undefined);
+            if (sid) out[c] = { s: sid };
+          }
         chunk[r] = out;
       }
       done += r1 - r0;
-      yield { kind: 'rows', index: i, cellData: chunk, done, total };
+      yield { kind: 'rows', index: i, cellData: chunk, done, total, ...(r1 >= m.rows && Object.keys(rowData).length ? { rowData } : {}) };
     }
   }
-  return { styles, sheetOrder: p.meta.sheets.map((s) => s.id), cf: [], meta: null, vba: null, name: '' };
+  const base: LoadResult = { styles: styles as never, sheetOrder: p.meta.sheets.map((s) => s.id), cf: [], meta: null, vba: null, name: '' };
+  if (!biff) return base;
+  return {
+    ...base,
+    defaultStyle: { ff: biff.defaultFont.name ?? 'Arial', fs: biff.defaultFont.size ?? 10 },
+    warnings: ['Old .xls format: charts, pictures and conditional formats are not shown. Save writes a new .xlsx.'],
+  } as LoadResult;
 }
 
 /** Active sheet → CSV text (computed values, not formulas). */
