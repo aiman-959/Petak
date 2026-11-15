@@ -125,7 +125,17 @@ await R.check('draw: Back button (keyevent 4) leaves drawing mode step by step',
   return [before, mid, await page.evaluate(() => [window.__draw.get().selected.length, window.__draw.get().active, document.visibilityState])];
 });
 screencap('draw-shapes');
-await page.click('[data-testid=draw-close]').catch(() => {});
+await R.check('after Back: is the app still in front? (activity, process, crash log)', async () => {
+  await sleep(2500);
+  const safe = (f) => { try { return String(f()).trim().split('\n').slice(-12).join(' | ').slice(0, 1500); } catch (e) { return 'ERR ' + String(e.message).slice(0, 200); } };
+  return {
+    resumed: safe(() => sh(`dumpsys activity activities | grep -E "ResumedActivity|mFocusedApp" | head -4`)),
+    pid: safe(() => sh(`pidof ${PKG}`)),
+    page: await page.evaluate(() => document.visibilityState).catch((e) => 'page: ' + String(e.message).slice(0, 80)),
+    log: safe(() => sh(`logcat -d -t 400 | grep -iE "FATAL|AndroidRuntime|petak.*(crash|died|kill)|Force finishing|am_finish|WIN DEATH|chromium.*(crash|renderer)|onBackPressed|finishing" | tail -12`)),
+  };
+});
+if (await page.evaluate(() => window.__draw.get().active).catch(() => false)) await page.click('[data-testid=draw-close]').catch(() => {});
 
 // ---- files: picker, second file, "Open with"
 const openViaPicker = async (name) => {
