@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { initFonts } from './fonts/fonts';
+import { FillHandle } from './ui/FillHandle';
 import { useDraw } from './draw/state';
 import './grid/view';
 import { governor } from './device/governor';
@@ -42,6 +43,7 @@ export default function App() {
   const dialog = useUi((s) => s.dialog);
   const theme = useUi((s) => s.theme);
   const drawing = useDraw((s) => s.active);
+  const touchUi = ready && !!doc.input; // the fill grip is for fingers; a mouse has Univer's own fill handle
 
   useEffect(() => {
     let cancelled = false;
@@ -135,6 +137,7 @@ export default function App() {
           )}
           {ready && !drawing && <PictureOverlay />}
           {ready && !drawing && <SelectionBar />}
+          {ready && !drawing && touchUi && <FillHandle />}
         </div>
         {tablet && ready && <SidePanel />}
       </div>

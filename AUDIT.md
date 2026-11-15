@@ -64,7 +64,7 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | H-05 | High | Columns/rows cannot be resized by touch; no hide/unhide in the UI | Fixed (`cells.mjs`) |
 | H-06 | High | Unsaved-changes prompt cannot save: only "Continue" (discard) or cancel | Fixed (`files.mjs`) |
 | H-07 | High | Rich text in a cell loses its formatting on load (flattened) | Fixed (`richtext.test.ts`, `files.mjs`) |
-| M-01 | Medium | No fill handle (copy / series by dragging) | Open |
+| M-01 | Medium | No fill handle (copy / series by dragging) | Fixed (`cells.mjs`, `fill.test.ts`): drag grip under the selection |
 | M-02 | Medium | No status bar (Sum / Average / Count of the selection) | Fixed (`cells2.mjs`) |
 | M-03 | Medium | Formula entry: no argument hints, no coloured references | Partly: argument hints done; coloured references open |
 | M-04 | Medium | Number cells do not get a numeric keyboard; Tab does not move right | Fixed (`cells.mjs`) |

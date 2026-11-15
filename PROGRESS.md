@@ -47,6 +47,7 @@ report and build). `AUDIT.md` holds every bug with its ID; this file says where 
 | H-03 | `.xls` without formatting | `biff.test.ts`, `files.mjs` |
 | H-06 | Unsaved prompt can't save | `files.mjs` |
 | H-07 | Rich text flattened | `richtext.test.ts`, `files.mjs` |
+| M-01 | No fill handle | `cells.mjs`, `fill.test.ts` |
 | — | Quick tap on the next row started editing | `cells.mjs` (double tap needs the same cell) |
 
 Also new: recent files, clear messages when a file cannot be opened, Format → Font & size with
@@ -57,7 +58,7 @@ your own font files, Android Back button handled by the page.
 | Suite | Result |
 |---|---|
 | Unit (Vitest, 19 files) | 134 / 134 |
-| `tests/e2e/cells.mjs` | 15 / 15 |
+| `tests/e2e/cells.mjs` | 16 / 16 |
 | `tests/e2e/cells2.mjs` | 12 / 12 |
 | `tests/e2e/draw-touch.mjs` | 24 / 24 |
 | `tests/e2e/part3.mjs` | 18 / 18 |
