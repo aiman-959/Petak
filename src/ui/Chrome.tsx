@@ -1,5 +1,6 @@
 /** App chrome: top bar, sheet tabs, phone bottom bar, tablet side panel, overlays. */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { onBack } from './back';
 import {
   Undo2, Redo2, PenTool, FolderOpen, History, Save, MoreVertical, Moon, Sun, Plus, Pencil, LayoutGrid, Paintbrush, PlusSquare, Database, Wrench, X, FilePlus, Share2, Download, Copy, Trash2,
 } from 'lucide-react';
@@ -70,7 +71,15 @@ export function Tool({ icon, label, onClick, on, testId }: { icon: ReactNode; la
   );
 }
 
+/** The Android Back button closes the top-most sheet or dialog. */
+function useBackToClose(onClose: () => void) {
+  const ref = useRef(onClose);
+  ref.current = onClose;
+  useEffect(() => onBack(() => (ref.current(), true)), []);
+}
+
 export function Sheet({ title, onClose, children }: { title?: string; onClose: () => void; children: ReactNode }) {
+  useBackToClose(onClose);
   return (
     <>
       <div className="sheet-backdrop" onClick={onClose} />
@@ -175,6 +184,7 @@ export function SidePanel() {
 }
 
 export function Dialog({ title, onClose, children, testId }: { title: string; onClose: () => void; children: ReactNode; testId?: string }) {
+  useBackToClose(onClose);
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', k);

@@ -16,7 +16,12 @@ await page.waitForTimeout(300);
 const F = (f) => path.resolve('tests/fixtures/files', f);
 const name = () => ev(() => window.__doc.snapshot.file.name);
 const dirty = () => ev(() => window.__doc.snapshot.dirty);
-const toast = async () => (await page.waitForSelector('.toast', { timeout: 15000 })).textContent();
+/** the toast text; with `re` waits until a toast matching it is shown (an earlier toast may still be up) */
+const toast = async (re) => {
+  if (!re) return (await page.waitForSelector('.toast', { timeout: 15000 })).textContent();
+  await page.waitForFunction((src) => new RegExp(src).test(document.querySelector('.toast')?.textContent ?? ''), re.source, { timeout: 15000 });
+  return page.textContent('.toast');
+};
 const pick = async (click, file) => {
   const [chooser] = await Promise.all([page.waitForEvent('filechooser'), click()]);
   await chooser.setFiles(file);
@@ -75,7 +80,7 @@ await step('a damaged file: clear message, the open workbook stays', async () =>
   const src = fs.readFileSync(F('roster.xlsx'));
   fs.writeFileSync(bad, src.subarray(0, Math.floor(src.length / 3))); // cut off: still starts like a zip
   await pick(() => page.click('[data-testid=open]'), bad);
-  const msg = await toast();
+  const msg = await toast(/Could not open/);
   assert.match(msg, /Could not open “broken\.xlsx”/);
   assert.match(msg, /damaged or incomplete/);
   assert.match(msg, /unchanged/);
@@ -88,7 +93,7 @@ await step('an empty file says so', async () => {
   const empty = path.join(t.tmp, 'empty.xlsx');
   fs.writeFileSync(empty, '');
   await pick(() => page.click('[data-testid=open]'), empty);
-  assert.match(await toast(), /Could not open “empty\.xlsx”: the file is empty/);
+  assert.match(await toast(/empty\.xlsx/), /Could not open “empty\.xlsx”: the file is empty/);
   assert.equal(await name(), 'people.csv');
   await page.waitForSelector('.toast', { state: 'detached', timeout: 15000 });
 });
@@ -102,17 +107,36 @@ await step('recent files: listed newest first; one that is gone is explained and
   const items = await page.$$eval('[data-testid=recent-item] b', (els) => els.map((e) => e.textContent));
   assert.deepEqual(items, ['old.xlsx', 'gone.xlsx']);
   await page.click('[data-testid=recent-item] >> nth=1');
-  const msg = await toast();
+  const msg = await toast(/gone\.xlsx/);
   assert.match(msg, /“gone\.xlsx” could not be opened again/);
   assert.deepEqual(await ev(() => window.__recent.list().then((l) => l.map((x) => x.name))), ['old.xlsx']);
   assert.equal(await name(), 'people.csv');
+});
+
+await step('Back closes the top-most dialog or sheet, one at a time; with nothing open it is left to Android', async () => {
+  await page.waitForSelector('.toast', { state: 'detached', timeout: 15000 }).catch(() => {});
+  assert.equal(await ev(() => window.__petakBack()), false);
+  await page.click('[data-testid=menu-more]');
+  await page.click('[data-testid=menu-recent]');
+  await page.waitForSelector('[data-testid=dlg-recent]');
+  assert.equal(await ev(() => window.__petakBack()), true);
+  assert.equal(await page.$('[data-testid=dlg-recent]'), null);
+  // the unsaved-changes question: Back is Cancel
+  await typeIn('J1', 'x');
+  await page.click('[data-testid=open]');
+  await page.waitForSelector('[data-testid=dlg-ask]');
+  assert.equal(await ev(() => window.__petakBack()), true);
+  assert.equal(await page.$('[data-testid=dlg-ask]'), null);
+  assert.equal(await val('J1'), 'x');
+  assert.equal(await ev(() => window.__petakBack()), false);
+  await ev(() => { window.__doc.emit?.({ dirty: false }); return 0; });
 });
 
 await step('an old .xls opens with its fonts, colours, borders and sizes; Save writes a new .xlsx', async () => {
   await page.waitForSelector('.toast', { state: 'detached', timeout: 15000 }).catch(() => {});
   await pick(() => page.click('[data-testid=open]'), F('legacy.xls'));
   await page.waitForFunction(() => window.__doc.snapshot.file.name === 'legacy.xls', null, { timeout: 30000 });
-  assert.match(await toast(), /Old \.xls format/);
+  assert.match(await toast(/legacy\.xls/), /Old \.xls format/);
   const info = await ev(() => {
     const ws = window.__doc.wb.getActiveSheet();
     const st = (ref) => ws.getRange(ref).getCellStyleData();

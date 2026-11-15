@@ -69,10 +69,10 @@ your own font files, Android Back button handled by the page.
 
 Emulator (CI `device` job, Android 14 WebView): line, rectangle (fit to cells, tool back to
 Select), tap-select, polyline by double tap and Back out of drawing mode all work.
-**Open problem there:** right after the second Back press the test loses its connection to the
-page, so the picker and "Open with" checks did not run. A diagnostics step was added to the device
-script (activity state, process, crash log); read its output in the next `device` job log before
-anything else. Until then C-04 and K-07 are not confirmed on Android.
+The "page connection drops after Back" seen in runs 30–36 was the device script, not the app: it
+still looked for the old Continue button, so the new Save / Don't save / Cancel question stayed
+open, the picker never appeared and the script's own Back press left the app. Script fixed; Back
+now also closes dialogs and sheets. C-04 ("Open with") and K-07 still need one clean `device` run.
 
 ## Still open in Phase 2
 
@@ -82,7 +82,6 @@ anything else. Until then C-04 and K-07 are not confirmed on Android.
 | K-07 | Opening another file does nothing | Worked on the emulator in run 23; not seen since the page drop above |
 | K-05 | Scroll / pinch speed | Compositor works; device fps not measured |
 | H-07 | Rich text flattened | Kept on save (C-01); not displayed as runs yet |
-| — | Emulator: page connection drops after Back | Diagnostics added; cause unknown |
 
 `AUDIT.md` statuses now show Fixed / Partly with the test that proves each fix; keep them current as items close.
 
@@ -118,7 +117,7 @@ What was built (details in `AUDIT.md` under each ID):
 
 ## Next, in order
 
-1. Read the emulator diagnostics (page drop after Back), fix, confirm C-04 and K-07 there
+1. Read the next `device` job log: picker, second file (K-07), "Open with" (C-04), Back closing a sheet
 2. Write the Phase 2 summary
 6. Phase 3 leftovers: fill handle series, coloured reference highlights, group/outline, PDF export and page setup, workbook tabs, performance profile before/after
 7. Phase 4: workbook covering every function, compared with headless LibreOffice and Microsoft's examples; a test per feature; round-trip tests; tap counts for 10 everyday tasks
