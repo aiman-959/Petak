@@ -74,6 +74,53 @@ public class DocumentsPlugin extends Plugin {
         copyToCache(call, uri);
     }
 
+    // ---- "Open with Petak" / "Share to Petak": a file handed over by another app
+    private Uri pending;
+
+    private static Uri uriOf(Intent i) {
+        if (i == null) return null;
+        String action = i.getAction();
+        if (Intent.ACTION_VIEW.equals(action) || Intent.ACTION_EDIT.equals(action)) return i.getData();
+        if (Intent.ACTION_SEND.equals(action)) {
+            Object extra = i.getParcelableExtra(Intent.EXTRA_STREAM);
+            return extra instanceof Uri ? (Uri) extra : null;
+        }
+        return null;
+    }
+
+    /** App started by the intent: remember the file until the page asks for it. */
+    @Override
+    public void load() {
+        pending = uriOf(getActivity().getIntent());
+    }
+
+    /** App already running: tell the page a file arrived. */
+    @Override
+    protected void handleOnNewIntent(Intent intent) {
+        super.handleOnNewIntent(intent);
+        Uri u = uriOf(intent);
+        if (u == null) return;
+        pending = u;
+        notifyListeners("openFile", new JSObject(), true);
+    }
+
+    /** The file another app handed over, once ({} when there is none). */
+    @PluginMethod
+    public void takeLaunchFile(PluginCall call) {
+        Uri u = pending;
+        pending = null;
+        if (u == null) {
+            call.resolve(new JSObject());
+            return;
+        }
+        try {
+            // usually not offered for "Open with"; then Save asks where to save a copy
+            getContext().getContentResolver().takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        } catch (Exception ignored) {
+        }
+        copyToCache(call, u);
+    }
+
     @PluginMethod
     public void read(PluginCall call) {
         String u = call.getString("uri");

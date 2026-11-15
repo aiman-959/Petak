@@ -1,7 +1,7 @@
 /** App chrome: top bar, sheet tabs, phone bottom bar, tablet side panel, overlays. */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  Undo2, Redo2, PenTool, FolderOpen, Save, MoreVertical, Moon, Sun, Plus, Pencil, LayoutGrid, Paintbrush, PlusSquare, Database, Wrench, X, FilePlus, Share2, Download, Copy, Trash2,
+  Undo2, Redo2, PenTool, FolderOpen, History, Save, MoreVertical, Moon, Sun, Plus, Pencil, LayoutGrid, Paintbrush, PlusSquare, Database, Wrench, X, FilePlus, Share2, Download, Copy, Trash2,
 } from 'lucide-react';
 import { useDoc } from './hooks';
 import { fileActions, sheets as sheetActions } from './actions';
@@ -37,7 +37,7 @@ export function TopBar({ onToggleTheme, dark }: { onToggleTheme: () => void; dar
       <button className="icon-btn" aria-label="Save" data-testid="save" onClick={fileActions.save}>
         <Save size={22} />
       </button>
-      <button className="icon-btn" aria-label="More" onClick={() => setMenu(true)}>
+      <button className="icon-btn" aria-label="More" data-testid="menu-more" onClick={() => setMenu(true)}>
         <MoreVertical size={22} />
       </button>
       {menu && (
@@ -45,6 +45,7 @@ export function TopBar({ onToggleTheme, dark }: { onToggleTheme: () => void; dar
           <div className="btn-grid" onClick={() => setMenu(false)}>
             <Tool icon={<FilePlus />} label="New" onClick={fileActions.newFile} />
             <Tool icon={<FolderOpen />} label="Open" onClick={fileActions.open} />
+            <Tool icon={<History />} label="Recent" testId="menu-recent" onClick={() => ui.open('recent')} />
             <Tool icon={<Save />} label="Save" onClick={fileActions.save} />
             <Tool icon={<Download />} label="Save .xlsx" onClick={() => fileActions.saveAs('xlsx')} />
             <Tool icon={<Download />} label="Save .xlsm" onClick={() => fileActions.saveAs('xlsm')} />

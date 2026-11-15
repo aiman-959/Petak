@@ -36,6 +36,9 @@ export interface PickedDoc {
 }
 export interface DocumentsPlugin {
   open(opts: { mimeTypes: string[] }): Promise<PickedDoc>;
+  /** The file another app handed over ("Open with", "Share"); no `path` when there is none. */
+  takeLaunchFile(): Promise<Partial<PickedDoc>>;
+  addListener(event: 'openFile', fn: () => void): Promise<{ remove(): Promise<void> }>;
   /** Re-read a previously granted URI (persistable permission). */
   read(opts: { uri: string }): Promise<PickedDoc>;
   write(opts: { uri: string; data: string /* base64 */ }): Promise<void>;

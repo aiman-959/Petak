@@ -75,7 +75,7 @@ export async function start(name, profile = 'phone', extra = {}) {
       (async () => {
         await page.click('[data-testid=open]');
         // unsaved changes: the app asks first
-        const dont = await page.waitForSelector('[data-testid=confirm-discard], [data-testid=confirm-ok]', { timeout: 1200 }).catch(() => null);
+        const dont = await page.waitForSelector('[data-testid=ask-discard], [data-testid=confirm-ok]', { timeout: 1200 }).catch(() => null);
         if (dont) await dont.click();
       })(),
     ]);

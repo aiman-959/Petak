@@ -552,8 +552,9 @@ class Doc {
     const canInPlace = (f.uri || f.handle) && sameFormat === f.format;
     if (!canInPlace) return this.saveAs(sameFormat);
     const { data, mime } = await this.serialize(sameFormat);
-    await saveFile(data, f.name, mime, { uri: f.uri, handle: f.handle });
-    this.emit({ dirty: false, savedAt: Date.now() });
+    const target = await saveFile(data, f.name, mime, { uri: f.uri, handle: f.handle });
+    // saving in place can end in "Save as" (a file opened through "Open with" is often read-only)
+    this.emit({ file: { ...this.snap.file, name: target.name || f.name, uri: target.uri ?? f.uri, handle: target.handle ?? f.handle }, dirty: false, savedAt: Date.now() });
     this.autosave();
   }
 

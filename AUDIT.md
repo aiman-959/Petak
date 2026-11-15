@@ -41,7 +41,7 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | C-01 | Critical | Saving destroys everything Petak does not model: pictures, hyperlinks, autofilter, named ranges, tables, page setup, rich text, column styles… **Save writes over the original file.** | Fixed: lossless save patches the original package (`ooxml-roundtrip.test.ts`, `features.mjs`) |
 | C-02 | Critical | Typing in a cell after a double tap (or with a keyboard) is thrown away | Fixed (`cells.mjs`) |
 | C-03 | Critical | Tapping a cell while typing a formula discards the formula | Fixed (`cells.mjs`) |
-| C-04 | Critical | "Open with Petak" starts the app but does not open the file | Open |
+| C-04 | Critical | "Open with Petak" starts the app but does not open the file | Fix written (plugin reads VIEW / EDIT / SEND intents, more file types); emulator run to confirm |
 | C-05 | Critical | Named ranges are not loaded: formulas using them show `#NAME?` (and that is what gets saved) | Fixed (unit tests) |
 | C-06 | Critical | Table references (`Sales[Amount]`) show `#ERROR!` | Fixed (unit tests) |
 | C-07 | Critical | Dates in Jan–Feb 1900 are one day off (`=DATE(1900,2,29)`) | Fixed (unit tests) |
@@ -62,7 +62,7 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | H-03 | High | `.xls` files open without any formatting or frozen panes | Open |
 | H-04 | High | Autofilter in a file is not loaded | Fixed (unit + e2e) |
 | H-05 | High | Columns/rows cannot be resized by touch; no hide/unhide in the UI | Fixed (`cells.mjs`) |
-| H-06 | High | Unsaved-changes prompt cannot save: only "Continue" (discard) or cancel | Open |
+| H-06 | High | Unsaved-changes prompt cannot save: only "Continue" (discard) or cancel | Fixed (`files.mjs`) |
 | H-07 | High | Rich text in a cell loses its formatting on load (flattened) | Partly: kept on save (C-01); not shown as runs yet |
 | M-01 | Medium | No fill handle (copy / series by dragging) | Open |
 | M-02 | Medium | No status bar (Sum / Average / Count of the selection) | Fixed (`cells2.mjs`) |
@@ -125,6 +125,7 @@ Device-only observations (emulator) are in the section "On a real Android WebVie
   app starts with the previous session. `.xls` is not registered at all.
 - **Planned fix:** native plugin method + event for VIEW/SEND intents (cold start and while
   running), copy the `content://` stream to the cache, open it; register xlsx, xlsm, xls, csv, ods.
+- **Fix:** `DocumentsPlugin` keeps the intent's file (cold start: `load()`, running: `handleOnNewIntent` + `openFile` event) and `takeLaunchFile()` hands it to the page, which asks about unsaved changes and opens it. The manifest now also takes `.xls`, `.ods`, tab-separated files, EDIT and SEND ("Share to Petak"). A file opened this way is often read-only: Save then asks where to put it. Not testable in the browser; the emulator job's "Open with" check is the proof.
 
 ### C-05 Named ranges are not loaded
 - **Steps:** open a workbook with a name `Qty` and `=SUM(Qty)`. `audit6.mjs`.

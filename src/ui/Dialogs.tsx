@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Dialog } from './Chrome';
-import { NUMBER_FORMATS, activeRange, fmt, commitInput } from './actions';
+import { NUMBER_FORMATS, activeRange, fileActions, fmt, commitInput } from './actions';
+import { recent, type RecentFile } from '../io/recent';
 import { guard, ui } from './store';
 import { doc } from '../state/doc';
 import { getTier } from '../device/tier';
@@ -338,6 +339,38 @@ export function AboutDialog() {
       <p className="muted">
         Univer (Apache-2.0), HyperFormula (GPL-3.0), SheetJS CE (Apache-2.0), ExcelJS (MIT), Arquero (BSD-3-Clause), ECharts (Apache-2.0), React (MIT), Capacitor (MIT), Lucide (ISC). See THIRD_PARTY_LICENSES.
       </p>
+    </Dialog>
+  );
+}
+
+/** File → Recent: files that can be opened again from where they are. */
+export function RecentDialog() {
+  const [list, setList] = useState<RecentFile[] | null>(null);
+  useEffect(() => void recent.list().then(setList), []);
+  return (
+    <Dialog title="Recent files" onClose={close} testId="dlg-recent">
+      {list && list.length === 0 && <p className="muted">No recent files yet. Files you open or save appear here.</p>}
+      <div className="recent-list">
+        {(list ?? []).map((r) => (
+          <button
+            key={(r.uri ?? r.name) + r.at}
+            className="recent-row"
+            data-testid="recent-item"
+            onClick={() => {
+              close();
+              fileActions.openRecent(r);
+            }}
+          >
+            <b>{r.name}</b>
+            <small>{new Date(r.at).toLocaleString()}</small>
+          </button>
+        ))}
+      </div>
+      {list && list.length > 0 && (
+        <button className="secondary" data-testid="recent-clear" onClick={() => recent.clear().then(() => setList([]))}>
+          Clear the list
+        </button>
+      )}
     </Dialog>
   );
 }

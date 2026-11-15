@@ -14,7 +14,8 @@ import {
 } from '@univerjs/sheets';
 import type { FRange } from '@univerjs/sheets/facade';
 import { doc, type FileFormat } from '../state/doc';
-import { pickFile, shareFile } from '../io/files';
+import { pickFile, reopen, takeLaunchFile, type OpenedFile, shareFile } from '../io/files';
+import { recent, type RecentFile } from '../io/recent';
 import { guard, ui } from './store';
 
 const exec = (id: string, params?: object) => doc.api.executeCommand(id, params);
@@ -28,22 +29,86 @@ export function activeRect(): IRange {
 }
 
 // -------------------------------------------------------------- file
+/**
+ * Before the open workbook is replaced: with unsaved changes ask Save / Don't save / Cancel.
+ * Returns false when the user cancels (or cancels the Save).
+ */
+export async function leaveCurrent(what = 'continue'): Promise<boolean> {
+  if (!doc.snapshot.dirty) return true;
+  const a = await ui.ask(`“${doc.snapshot.file.name}” has unsaved changes.\nSave them before you ${what.charAt(0).toLowerCase() + what.slice(1)}?`, [
+    { id: 'cancel', label: 'Cancel' },
+    { id: 'discard', label: "Don't save", kind: 'danger' },
+    { id: 'save', label: 'Save', kind: 'primary' },
+  ]);
+  if (a === 'discard') return true;
+  if (a !== 'save') return false;
+  try {
+    await doc.save();
+  } catch (e) {
+    if ((e as DOMException)?.name === 'AbortError' || /cancel/i.test((e as Error)?.message ?? '')) return false;
+    throw new Error(`Could not save “${doc.snapshot.file.name}”: ${(e as Error)?.message ?? e}. Nothing was closed.`);
+  }
+  return !doc.snapshot.dirty;
+}
+/** What went wrong, in words a person can act on. */
+export function openError(name: string, e: unknown): Error {
+  const raw = String((e as Error)?.message ?? e);
+  const ext = (/\.([a-z0-9]+)$/i.exec(name)?.[1] ?? '').toLowerCase();
+  let why = raw;
+  if (/password|encrypt/i.test(raw)) why = 'it is protected with a password. Remove the password in Excel and try again';
+  else if (!['xlsx', 'xlsm', 'xls', 'ods', 'csv', 'tsv', 'txt'].includes(ext) && /zip|central directory|unsupported|not a|invalid|corrupt/i.test(raw)) why = `“.${ext || '?'}” is not a spreadsheet Petak can read (xlsx, xlsm, xls, ods, csv)`;
+  else if (/zip|central directory|end of data|unexpected end|corrupt|invalid/i.test(raw)) why = 'the file is damaged or incomplete (' + raw + ')';
+  else if (/memory|allocation/i.test(raw)) why = 'it is too large for this device’s memory';
+  return new Error(`Could not open “${name}”: ${why}. The workbook you had open is unchanged.`);
+}
+const remember = () => void recent.add(doc.snapshot.file);
+async function openFile(f: OpenedFile) {
+  if (!f.buffer.byteLength) throw new Error(`Could not open “${f.name}”: the file is empty (0 bytes).`);
+  let ok = false;
+  try {
+    ok = await doc.open(f, { progress: ui.progress, confirm: ui.confirm });
+  } catch (e) {
+    throw openError(f.name, e);
+  }
+  if (!ok) return;
+  void recent.add({ name: f.name, uri: f.uri, handle: f.handle });
+  ui.toast(`Opened ${f.name}` + (doc.fontNotice ? `. ${doc.fontNotice}` : ''));
+}
+
 export const fileActions = {
   newFile: () =>
     guard(async () => {
-      if (doc.snapshot.dirty && !(await ui.confirm('Discard unsaved changes and start a new workbook?'))) return;
+      if (!(await leaveCurrent())) return;
       await doc.newWorkbook();
     }),
   open: () =>
     guard(async () => {
-      if (doc.snapshot.dirty && !(await ui.confirm('Discard unsaved changes and open another file?'))) return;
+      if (!(await leaveCurrent())) return;
       const f = await pickFile();
-      if (!f) return;
-      const ok = await doc.open(f, { progress: ui.progress, confirm: ui.confirm });
-      if (ok) ui.toast(`Opened ${f.name}` + (doc.fontNotice ? `. ${doc.fontNotice}` : ''));
+      if (f) await openFile(f);
     }),
-  save: () => guard(() => doc.save(), 'Saved'),
-  saveAs: (fmt: FileFormat) => guard(() => doc.saveAs(fmt), 'Saved'),
+  /** A file handed over by another app ("Open with Petak"), at start or while running. */
+  openLaunchFile: () =>
+    guard(async () => {
+      const f = await takeLaunchFile();
+      if (!f) return;
+      if (!(await leaveCurrent(`Open “${f.name}”`))) return;
+      await openFile(f);
+    }),
+  openRecent: (r: RecentFile) =>
+    guard(async () => {
+      if (!(await leaveCurrent())) return;
+      let f: OpenedFile;
+      try {
+        f = await reopen(r);
+      } catch (e) {
+        await recent.remove(r);
+        throw new Error(`“${r.name}” could not be opened again (moved, deleted or permission gone). It was removed from the list. ${(e as Error).message ?? ''}`.trim());
+      }
+      await openFile(f);
+    }),
+  save: () => guard(() => doc.save().then(remember), 'Saved'),
+  saveAs: (fmt: FileFormat) => guard(() => doc.saveAs(fmt).then(remember), 'Saved'),
   share: () =>
     guard(async () => {
       const fmt = doc.snapshot.file.format === 'xlsm' ? 'xlsm' : 'xlsx';

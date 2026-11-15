@@ -8,7 +8,8 @@ import { detectTier } from './device/tier';
 import { isTouchDevice } from './univer/setup';
 import { FormulaBar } from './ui/FormulaBar';
 import { TopBar, SheetTabs, BottomBar, SidePanel, Overlays } from './ui/Chrome';
-import { NumFmtDialog, CfDialog, FindDialog, FunctionsDialog, AboutDialog } from './ui/Dialogs';
+import { NumFmtDialog, CfDialog, FindDialog, FunctionsDialog, AboutDialog, RecentDialog } from './ui/Dialogs';
+import { onLaunchFile } from './io/files';
 import { useKeyboardOpen, useMedia } from './ui/hooks';
 import { ui, useUi } from './ui/store';
 import { prefs } from './state/storage';
@@ -59,6 +60,9 @@ export default function App() {
       const restored = !q.has('fresh') && (await doc.restoreSession().catch(() => false));
       if (!restored) await doc.newWorkbook();
       setReady(true);
+      // a file handed over by another app: at start, and later while the app is running
+      fileActions.openLaunchFile();
+      onLaunchFile(() => fileActions.openLaunchFile());
       console.info(`[tier] ${tier.tier} ram=${tier.ramGb}GB cores=${tier.cores} soc=${tier.soc} hz=${tier.refreshRate}`);
     })();
     return () => {
@@ -156,6 +160,7 @@ export default function App() {
           {dialog === 'datamodel' && <DataModelDialog />}
           {dialog === 'link' && <LinkDialog />}
           {dialog === 'fonts' && <FontsDialog />}
+          {dialog === 'recent' && <RecentDialog />}
           {dialog === 'picture' && <PictureViewer />}
         </Suspense>
       )}
