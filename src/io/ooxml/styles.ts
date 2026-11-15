@@ -146,7 +146,7 @@ const has = (xml: string, name: string) => {
 };
 const tagOf = (xml: string, name: string) => new RegExp(`<(?:\\w+:)?${name}\\b[^>]*>`).exec(xml)?.[0];
 
-function fontStyle(xml: string, theme: Theme, idx: string[]): IStyleData {
+export function fontStyle(xml: string, theme: Theme, idx: string[] = INDEXED): IStyleData {
   const s: IStyleData = {};
   const name = val(xml, 'name') ?? val(xml, 'rFont');
   if (name) s.ff = name;

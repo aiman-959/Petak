@@ -269,9 +269,10 @@ export function commitInput(text: string, target?: FRange) {
   const cell = r.getCellData();
   const p = parseInput(text);
   if (text === '') r.clearContent();
-  else if ('f' in p) r.setValue({ f: p.f } as never);
+  else if ('f' in p) r.setValue((cell?.p ? { f: p.f, p: null } : { f: p.f }) as never);
   else {
-    r.setValue(p.v as never);
+    // typing over a rich-text cell replaces its formatted runs too (they would keep showing the old text)
+    r.setValue((cell?.p ? { v: p.v, p: null } : p.v) as never);
     if (p.pattern && !cell?.s) r.setNumberFormat(p.pattern);
   }
 }

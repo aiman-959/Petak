@@ -31,6 +31,7 @@ await step('keyboard: arrows, Shift+arrows, Ctrl+arrows, Enter, Tab', async () =
   await page.keyboard.press('Shift+ArrowDown');
   await page.keyboard.press('Shift+ArrowRight');
   assert.deepEqual(await sel(), [1, 1, 2, 2]);
+  await page.waitForTimeout(400); // not a double tap on A1 (the keys above take no time here)
   await tap('A1');
   await page.keyboard.press('Control+ArrowDown');
   assert.deepEqual(await sel(), [3, 0, 3, 0]);

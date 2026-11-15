@@ -63,7 +63,7 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | H-04 | High | Autofilter in a file is not loaded | Fixed (unit + e2e) |
 | H-05 | High | Columns/rows cannot be resized by touch; no hide/unhide in the UI | Fixed (`cells.mjs`) |
 | H-06 | High | Unsaved-changes prompt cannot save: only "Continue" (discard) or cancel | Fixed (`files.mjs`) |
-| H-07 | High | Rich text in a cell loses its formatting on load (flattened) | Partly: kept on save (C-01); not shown as runs yet |
+| H-07 | High | Rich text in a cell loses its formatting on load (flattened) | Fixed (`richtext.test.ts`, `files.mjs`) |
 | M-01 | Medium | No fill handle (copy / series by dragging) | Open |
 | M-02 | Medium | No status bar (Sum / Average / Count of the selection) | Fixed (`cells2.mjs`) |
 | M-03 | Medium | Formula entry: no argument hints, no coloured references | Partly: argument hints done; coloured references open |
@@ -268,6 +268,7 @@ limited; never save in place.
 `drag column A header edge: width 88 -> 88`. **Fix:** drag header edges, double tap to autofit, hide/unhide, group.
 ### H-06 Unsaved-changes prompt cannot save — **fix:** Save / Don't save / Cancel.
 ### H-07 Rich text flattened — **fix:** keep rich text runs when the cell is not edited (part of C-01), show runs.
+**Fixed:** a rich string is shown as runs with their own font, size, colour, bold / italic / underline / strike and super- / subscript; runs without formatting take the cell's font, as in Excel. Saved back unchanged when the cell was not edited; typing over the cell replaces the runs. Multi-line rich strings are still shown as plain text.
 
 ## Medium / Low
 M-01…M-10 and L-01, L-02 are listed in the summary; each maps to a Phase 3 acceptance item.

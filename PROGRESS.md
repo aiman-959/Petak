@@ -11,7 +11,7 @@ report and build). `AUDIT.md` holds every bug with its ID; this file says where 
 | Phase | State |
 |---|---|
 | 1. Full audit | **Done.** `AUDIT.md` written (7 Critical, 12 Known, 7 High, Medium/Low, emulator findings). |
-| 2. Known problems | **Nearly done.** All 12 known problems and the Critical / High items have a fix and a test, except: device confirmation of "Open with" (C-04) and K-07, device fps (K-05), rich text shown as runs (H-07). |
+| 2. Known problems | **Nearly done.** All 12 known problems and the Critical / High items have a fix and a test, except: device confirmation of "Open with" (C-04) and K-07, device fps (K-05). |
 | 3. Acceptance criteria | Partly covered by the Phase 2 work (cell interaction, links, pictures). Rest not started. |
 | 4. Every function and feature | Not started. |
 | 5. Performance and stability | Not started (scroll/pinch compositor is built, device numbers not measured). |
@@ -46,6 +46,7 @@ report and build). `AUDIT.md` holds every bug with its ID; this file says where 
 | C-04 | "Open with Petak" | code written; **emulator confirmation pending** |
 | H-03 | `.xls` without formatting | `biff.test.ts`, `files.mjs` |
 | H-06 | Unsaved prompt can't save | `files.mjs` |
+| H-07 | Rich text flattened | `richtext.test.ts`, `files.mjs` |
 | — | Quick tap on the next row started editing | `cells.mjs` (double tap needs the same cell) |
 
 Also new: recent files, clear messages when a file cannot be opened, Format → Font & size with
@@ -55,13 +56,13 @@ your own font files, Android Back button handled by the page.
 
 | Suite | Result |
 |---|---|
-| Unit (Vitest, 18 files) | 130 / 130 |
+| Unit (Vitest, 19 files) | 134 / 134 |
 | `tests/e2e/cells.mjs` | 15 / 15 |
-| `tests/e2e/cells2.mjs` | 12 / 12 (its first keyboard step failed once in about six runs: timing right after start) |
+| `tests/e2e/cells2.mjs` | 12 / 12 |
 | `tests/e2e/draw-touch.mjs` | 24 / 24 |
 | `tests/e2e/part3.mjs` | 18 / 18 |
 | `tests/e2e/fonts.mjs` | 8 / 8 |
-| `tests/e2e/files.mjs` | 9 / 9 |
+| `tests/e2e/files.mjs` | 11 / 11 |
 | `tests/e2e/render.mjs` | 10 / 10 |
 | `tests/e2e/features.mjs` | 19 / 19 |
 | `tests/e2e/part2.mjs` | 16 / 16 |
@@ -81,7 +82,6 @@ now also closes dialogs and sheets. C-04 ("Open with") and K-07 still need one c
 | C-04 | "Open with Petak" does not open the file | Written (`DocumentsPlugin.takeLaunchFile`, intent filters); needs the emulator |
 | K-07 | Opening another file does nothing | Worked on the emulator in run 23; not seen since the page drop above |
 | K-05 | Scroll / pinch speed | Compositor works; device fps not measured |
-| H-07 | Rich text flattened | Kept on save (C-01); not displayed as runs yet |
 
 `AUDIT.md` statuses now show Fixed / Partly with the test that proves each fix; keep them current as items close.
 

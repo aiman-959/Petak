@@ -157,4 +157,29 @@ await step('an old .xls opens with its fonts, colours, borders and sizes; Save w
   assert.equal(dl.suggestedFilename(), 'legacy.xlsx');
 });
 
+await step('rich text in a cell is shown as formatted runs; typing over it replaces it', async () => {
+  const { unzipSync, zipSync, strFromU8, strToU8 } = await import('fflate');
+  const z = unzipSync(new Uint8Array(fs.readFileSync(F('roster.xlsx'))));
+  const xml = strFromU8(z['xl/sharedStrings.xml']);
+  const first = /<si><t[^>]*>([^<]*)<\/t><\/si>/.exec(xml);
+  z['xl/sharedStrings.xml'] = strToU8(xml.replace(first[0], '<si><r><t xml:space="preserve">Plain </t></r><r><rPr><b/><color rgb="FFFF0000"/></rPr><t xml:space="preserve">bold red</t></r><r><rPr><i/></rPr><t xml:space="preserve"> note</t></r></si>'));
+  const rich = path.join(t.tmp, 'rich.xlsx');
+  fs.writeFileSync(rich, zipSync(z));
+  await t.openFile(rich);
+  const where = await ev(() => {
+    const ws = window.__doc.wb.getActiveSheet();
+    for (let r = 0; r < 20; r++) for (let c = 0; c < 12; c++) { const d = ws.getRange(r, c).getCellData(); if (d?.p) return { r, c, runs: d.p.body.textRuns.length, text: d.p.body.dataStream, ref: ws.getRange(r, c).getA1Notation() }; }
+    return null;
+  });
+  assert.ok(where, 'a cell with a rich-text document');
+  assert.equal(where.text, 'Plain bold red note\r\n');
+  assert.equal(where.runs, 3);
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: '/tmp/claude-0/-home-user-Petak/d2438ac6-d1d7-5083-8327-ceef5a77a0b0/scratchpad/rich.png', clip: { x: 0, y: 56, width: 412, height: 260 } });
+  await typeIn(where.ref, 'retyped');
+  const after = await ev(([r, c]) => window.__doc.wb.getActiveSheet().getRange(r, c).getCellData(), [where.r, where.c]);
+  assert.equal(after.v, 'retyped');
+  assert.ok(!after.p, 'the old runs are gone: ' + JSON.stringify(after));
+});
+
 await t.finish();
