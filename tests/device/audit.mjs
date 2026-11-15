@@ -172,7 +172,18 @@ const openViaPicker = async (name) => {
     }
   }
   await sleep(6000);
-  return page.evaluate(() => [window.__doc.snapshot.file.name, window.__doc.snapshot.sheets.map((s) => s.name)]);
+  try {
+    return await page.evaluate(() => [window.__doc.snapshot.file.name, window.__doc.snapshot.sheets.map((s) => s.name)]);
+  } catch (e) {
+    // the page is gone: say why (process restarted? renderer crashed? killed for memory?)
+    const safe = (f) => { try { return String(f()).trim().split('\n').slice(-14).join(' | ').slice(0, 2400); } catch (err) { return 'ERR ' + String(err.message).slice(0, 160); } };
+    return {
+      error: String(e.message).slice(0, 80),
+      pid: safe(() => sh(`pidof ${PKG}`)),
+      focus: safe(() => sh('dumpsys window | grep mCurrentFocus')),
+      log: safe(() => sh(`logcat -d -t 3000 | grep -iE "FATAL|AndroidRuntime: |Process: |Caused by|chromium.*(crash|Renderer|killed|fatal)|renderer.*(gone|crash|kill)|lowmemory|lmkd.*kill|am_kill|am_proc_died|Killing .*petak|died.*petak|petak.*died|OutOfMemory|WebView.*(crash|gone)" | tail -14`)),
+    };
+  }
 };
 await R.check('open roster.xlsx with the system picker', () => openViaPicker('roster.xlsx'));
 screencap('roster');
