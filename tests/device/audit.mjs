@@ -224,6 +224,7 @@ await R.check('cold start by "Open with" (the app is not running): people.csv', 
   return p2.evaluate(() => [window.__doc.snapshot.file.name, window.__doc.wb.getActiveSheet().getRange('A1').getValue()]);
 });
 screencap('cold-open-with');
+await R.check('Petak holds no connection to Play services providers (empty = good)', () => sh(`dumpsys activity providers | grep -B3 -A6 "${PKG}" | grep -iE "gms|FontsProvider" | head -5 || true`).trim());
 R.save();
 console.log('device audit finished');
 process.exit(0);

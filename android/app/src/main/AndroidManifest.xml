@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:allowBackup="true"
@@ -63,6 +64,23 @@
                 <data android:mimeType="text/tab-separated-values" />
             </intent-filter>
         </activity>
+
+        <!--
+             AndroidX's emoji library connects to Google Play services' font provider when the app
+             starts. Android then kills Petak whenever Play services restarts or updates ("depends on
+             provider ...FontsProvider in dying proc"), and the app comes back with the old session:
+             an opened file seems to vanish (K-07). Petak draws everything in its WebView and does
+             not need that library's start-up, so it is switched off.
+        -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+                tools:node="remove" />
+        </provider>
 
         <provider
             android:name="androidx.core.content.FileProvider"
