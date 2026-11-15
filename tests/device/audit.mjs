@@ -224,7 +224,8 @@ await R.check('cold start by "Open with" (the app is not running): people.csv', 
   return p2.evaluate(() => [window.__doc.snapshot.file.name, window.__doc.wb.getActiveSheet().getRange('A1').getValue()]);
 });
 screencap('cold-open-with');
-await R.check('Petak holds no connection to Play services providers (empty = good)', () => sh(`dumpsys activity providers | grep -B3 -A6 "${PKG}" | grep -iE "gms|FontsProvider" | head -5 || true`).trim());
+await R.check('why Android killed Petak during this run (empty = it never did)', () => sh(`logcat -d | grep -E "Killing [0-9]+:${PKG.replace(/\./g, '\\.')}[/: ]" | tail -4 || true`).trim().slice(0, 1500));
+await R.check('provider connections of Petak into other apps', () => sh(`dumpsys activity providers | grep -B12 "${PKG}" | grep -E "ContentProviderRecord|-> .*${PKG}|${PKG} *->|authority=" | head -14 || true`).trim().slice(0, 2500));
 R.save();
 console.log('device audit finished');
 process.exit(0);
