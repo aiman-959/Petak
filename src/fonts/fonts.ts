@@ -9,8 +9,7 @@
  *   (Arimo, Tinos and Cousine are the Liberation Sans / Serif / Mono designs.)
  *
  * Because the substitute answers to the original name, nothing in the workbook changes: text
- * keeps its width, and the file is saved with the original font names. A font really installed
- * on the device wins (`local()`). The files are in the app (no network), split by script and
+ * keeps its width, and the file is saved with the original font names. The files are in the app (no network), split by script and
  * loaded only when a workbook uses them. Chinese, Japanese and Korean text falls back to the
  * system's Noto Sans CJK, which every Android has.
  *
@@ -80,9 +79,8 @@ export function fontFaceCss(url: (pkg: string, subset: string, weight: number, s
         for (const style of ['normal', 'italic']) {
           const u = url(sub.pkg, subset, weight, style);
           if (!u) continue;
-          // an installed font of that name wins; the alias for the substitute's own name has no local()
-          const local = alias === key ? '' : `local("${name}"), `;
-          out.push(`@font-face{font-family:"${name}";font-style:${style};font-weight:${weight};font-display:swap;src:${local}url(${u}) format("woff2");unicode-range:${RANGES[subset]}}`);
+          // no local(): see hasLocalFont
+          out.push(`@font-face{font-family:"${name}";font-style:${style};font-weight:${weight};font-display:swap;src:url(${u}) format("woff2");unicode-range:${RANGES[subset]}}`);
         }
   }
   return out.join('\n');
@@ -96,29 +94,35 @@ const listeners = new Set<() => void>();
 let onFontsLoaded: () => void = () => {};
 
 /**
- * Is a font of exactly this name installed on the device? Asked through `local()`, the same
- * lookup the @font-face rules use. (Comparing text widths is not reliable: Android answers
- * "Arial" with Roboto and Linux answers "Calibri" with Carlito.)
+ * Is a font of this name on the device? Compared by text width against the generic fallbacks.
+ * `local()` is deliberately not used anywhere in this file: on Android the WebView answers it by
+ * connecting to Google Play services' font provider, and Android then kills every app holding
+ * that connection whenever Play services restarts ("depends on provider …FontsProvider in dying
+ * proc"). The app came back with its old session and a file just opened seemed to vanish (K-07).
+ * The price: an Excel font that really is installed (desktop browsers) is not preferred over the
+ * bundled look-alike, and a system alias (Android answers "Arial" with Roboto) counts as missing.
  */
-async function hasLocalFont(name: string): Promise<boolean> {
+function hasLocalFont(name: string): boolean {
   try {
-    await new FontFace('petak-probe', `local("${name.replace(/["\\]/g, '')}")`).load();
-    return true;
+    const ctx = document.createElement('canvas').getContext('2d')!;
+    const text = 'mmmmmmmmmmlliWW@#1';
+    const w = (f: string) => ((ctx.font = `72px ${f}`), ctx.measureText(text).width);
+    return ['monospace', 'serif', 'sans-serif'].every((base) => w(`"${name.replace(/["\\]/g, '')}", ${base}`) !== w(base));
   } catch {
     return false;
   }
 }
 const localCache = new Map<string, boolean>();
-/** Remember whether these fonts are on the device (for fontReport, which is synchronous). */
+/** Remember whether these fonts are on the device (only asked for names that have no bundled substitute). */
 export async function probeFonts(names: Iterable<string>) {
   if (!browser) return;
-  await Promise.all(
-    [...new Set(names)].filter((n) => n && !localCache.has(n.toLowerCase())).map(async (n) => {
-      const ok = await hasLocalFont(n);
-      localCache.set(n.toLowerCase(), ok);
-      if (ok) installed.add(n.toLowerCase());
-    }),
-  );
+  for (const n of new Set(names)) {
+    const k = n.toLowerCase();
+    if (!n || localCache.has(k) || substituteFor(n)) continue;
+    const ok = hasLocalFont(n);
+    localCache.set(k, ok);
+    if (ok) installed.add(k);
+  }
 }
 
 /** Register the bundled substitutes and the user's own fonts. Call once, before the first workbook. */
@@ -126,8 +130,6 @@ export async function initFonts(onLoaded: () => void = () => {}) {
   if (!browser || registered) return;
   registered = true;
   onFontsLoaded = onLoaded;
-  // before the aliases exist: which Excel fonts does the device really have?
-  await probeFonts([...BUILT_IN, 'Helvetica']);
   const files = import.meta.glob('/node_modules/@fontsource/{carlito,caladea,arimo,tinos,cousine}/files/*-{latin,latin-ext,cyrillic,cyrillic-ext,greek}-{400,700}-{normal,italic}.woff2', {
     eager: true,
     query: '?url',

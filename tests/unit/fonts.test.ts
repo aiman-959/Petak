@@ -11,12 +11,13 @@ describe('font substitutes', () => {
     expect(substituteFor('Liberation Sans')?.family).toBe('Arimo');
     expect(substituteFor('Comic Sans MS')).toBeNull();
   });
-  it('registers each substitute under the original name, real fonts first', () => {
+  it('registers each substitute under the original name, never through local()', () => {
     const css = fontFaceCss((pkg, subset, w, st) => `/f/${pkg}-${subset}-${w}-${st}.woff2`);
-    expect(css).toContain('@font-face{font-family:"Calibri";font-style:normal;font-weight:400;font-display:swap;src:local("Calibri"), url(/f/carlito-latin-400-normal.woff2)');
+    expect(css).toContain('@font-face{font-family:"Calibri";font-style:normal;font-weight:400;font-display:swap;src:url(/f/carlito-latin-400-normal.woff2)');
     expect(css).toContain('font-family:"Times New Roman";font-style:italic;font-weight:700');
     expect(css).toContain('url(/f/tinos-cyrillic-700-italic.woff2)');
-    expect(css).toMatch(/font-family:"Carlito";[^}]*src:url\(/); // the substitute's own name has no local()
+    expect(css).toMatch(/font-family:"Carlito";[^}]*src:url\(/);
+    expect(css).not.toContain('local('); // Android would connect to Play services' font provider
     expect(css).not.toContain('caladea-cyrillic'); // Caladea has no Cyrillic
     // a missing file is skipped, not written as "undefined"
     expect(fontFaceCss(() => undefined)).toBe('');
