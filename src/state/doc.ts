@@ -26,7 +26,8 @@ import { invalidateDocumentFontMetrics } from '@univerjs/engine-render';
 import { ensureFonts, fontReport, reportText } from '../fonts/fonts';
 import { GridInput, type GridInputHooks } from '../grid/input';
 import { cfFromUniver, cfToUniver, type UCfRule } from '../univer/cf';
-import { getTier } from '../device/tier';
+import { canvasStretch, getTier } from '../device/tier';
+import { fixThinLines } from '../grid/view';
 import { governor } from '../device/governor';
 import { AutosaveTracker, loadSession } from './autosave';
 import { MIME, saveFile, type OpenedFile } from '../io/files';
@@ -342,6 +343,7 @@ class Doc {
       sheetOrder: ['sheet1'],
       sheets: { sheet1: { id: 'sheet1', name: 'Sheet1', rowCount: 1000, columnCount: 26, defaultColumnWidth: 88, defaultRowHeight: 24 } as IWorksheetData },
     });
+    fixThinLines(canvasStretch);
     this.meta = emptyMeta();
     this.origin = null;
     this.names = [];
@@ -404,6 +406,7 @@ class Doc {
     const threads = (res.meta as AppMeta | null)?.threads;
     if (threads && Object.keys(threads).length && !resources.some((r) => r.name === RES_THREADS)) resources.push({ name: RES_THREADS, data: withUnitId(JSON.stringify(threads), unitId) });
     const fwb = this.h.api.createWorkbook({ id: unitId, name: file.name, styles: res.styles, sheetOrder: order, sheets, resources, defaultStyle: res.defaultStyle } as Partial<IWorkbookData>);
+    fixThinLines(canvasStretch);
     this.meta = { ...emptyMeta(), ...(res.meta ?? {}) };
     this.names = (res.names ?? []).filter((n) => !n.builtin && !n.orphan);
     this.loadWarnings = res.warnings ?? [];
@@ -603,6 +606,7 @@ class Doc {
     await this.prepareFonts(s.data as Partial<IWorkbookData>);
     this.disposeCurrent();
     const fwb = this.h.api.createWorkbook(s.data);
+    fixThinLines(canvasStretch);
     this.meta = { ...emptyMeta(), ...extra.meta };
     this.origin = (await kv.get<Origin>(ORIGIN_KEY).catch(() => undefined)) ?? null;
     this.names = extra.names ?? [];
@@ -675,6 +679,7 @@ class Doc {
   }
 
   syncMetaRenderers() {
+    fixThinLines(canvasStretch);
     setSparklines(this.meta.sparklines ?? []);
     setDrawings(this.meta.drawings, this.meta.drawUnit ?? 'mm');
     try {

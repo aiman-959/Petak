@@ -52,10 +52,10 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | K-05 | High | Scrolling and pinch zoom are slow and stutter | Partly: GPU compositor works in e2e; device fps not measured yet |
 | K-06 | High | Excel fonts do not display correctly | Fixed (`fonts.mjs`, `fonts.test.ts`); look on a phone still to check |
 | K-07 | High | Opening another file does nothing on the phone | Open |
-| K-08 | High | Grid lines and borders are broken / faded at zoom ≠ 100 % | Open |
+| K-08 | High | Grid lines and borders are broken / faded at zoom ≠ 100 % | Fixed (`render.mjs`) |
 | K-09 | High | Hyperlinks load as plain text | Fixed (`cells2.mjs`) |
 | K-10 | High | Pictures in files are not loaded | Fixed (`cells2.mjs`) |
-| K-11 | High | Frozen rows/columns: content overlaps at the freeze line | Open |
+| K-11 | High | Frozen rows/columns: content overlaps at the freeze line | No longer reproduces (see below); `render.mjs` |
 | K-12 | High | A single tap on a cell opens the keyboard | Fixed (`cells.mjs`) |
 | H-01 | High | No keyboard support at all: arrows, Shift/Ctrl+arrows, Delete, F2, Ctrl+C/X/V do nothing | Fixed (`cells.mjs`) |
 | H-02 | High | No copy / cut / paste anywhere in the phone UI; long press does nothing | Fixed (`cells.mjs`, `cells2.mjs`) |
@@ -215,6 +215,7 @@ Device-only observations (emulator) are in the section "On a real Android WebVie
   gaps; grid lines are blurred across two device pixels.
 - **Planned fix:** Petak's own line pass after fills: borders and grid lines snapped to device
   pixels at every zoom; merged cells hide inner grid lines.
+- **Cause found and fixed:** the lines were in the canvas all along, one canvas pixel wide. On Low / Mid tier devices the grid canvas has fewer pixels than the screen (2 instead of 2.625 per CSS pixel on the test phone) and is stretched by a non-whole factor, which smears a one-pixel line into faint grey, worst between pastel fills and after a scroll that lands between pixels. Borders and grid lines are now drawn one *screen* pixel wide (`fixThinLines` in `src/grid/view.ts`). High tier devices draw at the screen's own resolution and were not affected. Test: `render.mjs` measures the screenshot at 60–130 % after scrolling, and shows the same borders are faint with the fix switched off.
 
 ### K-09 Hyperlinks load as plain text
 - **Steps:** QM report. `audit1.mjs`: `A2 cell {"v":"Procedure QM-014 (intranet)","t":1,"s":"s2"}`.
@@ -235,6 +236,7 @@ Device-only observations (emulator) are in the section "On a real Android WebVie
   the frozen header.
 - **Planned fix:** clip each pane; draw merged cells crossing a split once per pane with
   pane-local alignment; one divider line.
+- **Re-checked after the touch / compositor rework:** the overlap no longer happens. A merged title that crosses the freeze line shows its start in the frozen pane and the scrolled part in the other pane (as Excel does), rows no longer show through under the frozen header, and taps go to the right pane (`render.mjs`). No further change made.
 
 ### K-12 A single tap opens the keyboard
 - **Steps:** edit any cell once, then tap another cell. `audit2.mjs`.
