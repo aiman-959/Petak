@@ -225,7 +225,8 @@ await R.check('cold start by "Open with" (the app is not running): people.csv', 
 });
 screencap('cold-open-with');
 await R.check('why Android killed Petak during this run (empty = it never did)', () => sh(`logcat -d | grep -E "Killing [0-9]+:${PKG.replace(/\./g, '\\.')}[/: ]" | tail -4 || true`).trim().slice(0, 1500));
-await R.check('provider connections of Petak into other apps', () => sh(`dumpsys activity providers | grep -B12 "${PKG}" | grep -E "ContentProviderRecord|-> .*${PKG}|${PKG} *->|authority=" | head -14 || true`).trim().slice(0, 2500));
+await R.check('providers Petak is connected to (a Play services provider here means Android kills Petak when Play services restarts)', () =>
+  sh(`dumpsys activity providers | awk '/ContentProviderRecord\\{/ {rec=$0} /->.*${PKG}/ {print rec " <= " $0}' | head -8 || true`).trim().slice(0, 2000));
 R.save();
 console.log('device audit finished');
 process.exit(0);
