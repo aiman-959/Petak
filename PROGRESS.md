@@ -11,7 +11,7 @@ report and build). `AUDIT.md` holds every bug with its ID; this file says where 
 | Phase | State |
 |---|---|
 | 1. Full audit | **Done.** `AUDIT.md` written (7 Critical, 12 Known, 7 High, Medium/Low, emulator findings). |
-| 2. Known problems | **In progress.** Drawing (K-01 to K-04) now fixed and tested. Fonts, file opening and rendering still open. |
+| 2. Known problems | **Nearly done.** All 12 known problems and the Critical / High items have a fix and a test, except: device confirmation of "Open with" (C-04) and K-07, device fps (K-05), rich text shown as runs (H-07). |
 | 3. Acceptance criteria | Partly covered by the Phase 2 work (cell interaction, links, pictures). Rest not started. |
 | 4. Every function and feature | Not started. |
 | 5. Performance and stability | Not started (scroll/pinch compositor is built, device numbers not measured). |
@@ -36,52 +36,53 @@ report and build). `AUDIT.md` holds every bug with its ID; this file says where 
 | H-04 | Autofilter not loaded | unit + e2e |
 | H-05 | No touch resize / autofit / hide / unhide | `cells.mjs` |
 | M-02 | No Sum / Average / Count status | `cells2.mjs` |
-| K-01 | Shapes can't be selected or deleted after drawing | `draw-touch.mjs`, `part3.mjs` |
-| K-02 | Polyline never finishes | `draw-touch.mjs` |
-| K-03 | Line tool is tap-to-tap | `draw-touch.mjs` (browser; device run still to do) |
+| K-01 | Shapes can't be selected or deleted after drawing | `draw-touch.mjs`, `part3.mjs`; emulator |
+| K-02 | Polyline never finishes | `draw-touch.mjs`; emulator (4-point polyline by taps + double tap) |
+| K-03 | Line tool is tap-to-tap | `draw-touch.mjs`; emulator (line by press–drag–release) |
 | K-04 | Nothing snaps to cell lines | `draw.test.ts`, `draw-touch.mjs` |
+| K-06 | Excel fonts display wrongly | `fonts.mjs`, `fonts.test.ts` |
+| K-08 | Borders faded / missing at zoom ≠ 100 % | `render.mjs` (screenshot measured at 60–130 %) |
+| K-11 | Frozen panes overlap | no longer reproduces; `render.mjs` |
+| C-04 | "Open with Petak" | code written; **emulator confirmation pending** |
+| H-03 | `.xls` without formatting | `biff.test.ts`, `files.mjs` |
+| H-06 | Unsaved prompt can't save | `files.mjs` |
+| — | Quick tap on the next row started editing | `cells.mjs` (double tap needs the same cell) |
 
-Also done: formula argument hints, numeric keyboard for number cells, Enter moves down / Tab moves right.
+Also new: recent files, clear messages when a file cannot be opened, Format → Font & size with
+your own font files, Android Back button handled by the page.
 
-### Last full test run (after the drawing rework)
+### Last full test run (commit `0811fba`)
 
 | Suite | Result |
 |---|---|
-| Unit (Vitest, 15 files) | 121 / 121 |
-| `tests/e2e/draw-touch.mjs` (new, phone, touch) | 24 / 24 |
-| `tests/e2e/part3.mjs` (tablet, mouse) | 18 / 18 |
+| Unit (Vitest, 18 files) | 130 / 130 |
+| `tests/e2e/cells.mjs` | 15 / 15 |
+| `tests/e2e/cells2.mjs` | 12 / 12 (its first keyboard step failed once in about six runs: timing right after start) |
+| `tests/e2e/draw-touch.mjs` | 24 / 24 |
+| `tests/e2e/part3.mjs` | 18 / 18 |
+| `tests/e2e/fonts.mjs` | 8 / 8 |
+| `tests/e2e/files.mjs` | 9 / 9 |
+| `tests/e2e/render.mjs` | 10 / 10 |
 | `tests/e2e/features.mjs` | 19 / 19 |
 | `tests/e2e/part2.mjs` | 16 / 16 |
 | `tests/e2e/part4.mjs` | 9 / 9 |
-| `tests/e2e/cells.mjs` | 14 / 14 |
-| `tests/e2e/cells2.mjs` | 10 / 12, see below |
 
-**cells2: two link steps fail, and they fail the same way on the previous commit (`2c2e29c`)**, so
-this is not from the drawing work: after opening `qm-report.xlsx`, the first tap on E4 opens the
-formula-bar editor instead of selecting the cell, so the "Open link" button never appears. The
-second step fails as a consequence. To investigate next (likely the tap after a file open being taken
-as a second tap on the already-active cell).
-
-CI run 23 (this branch): APK build passed (so the `MainActivity` Back change compiles) and the
-emulator job ran. On the Android WebView: line by press–drag–release, rectangle fit to cells with
-the tool back to Select, tap selects the rectangle; **the polyline double tap did not finish** with
-`adb` taps (timed release to release). Fixed (timed from the second press, as in the grid) with a
-new slow-double-tap test; the next CI run should show the polyline finished. Opening a second file
-from the picker worked on the emulator (K-07 not reproduced there either). "Open with" still opens
-nothing new (C-04) and `.xls` has no VIEW handler.
+Emulator (CI `device` job, Android 14 WebView): line, rectangle (fit to cells, tool back to
+Select), tap-select, polyline by double tap and Back out of drawing mode all work.
+**Open problem there:** right after the second Back press the test loses its connection to the
+page, so the picker and "Open with" checks did not run. A diagnostics step was added to the device
+script (activity state, process, crash log); read its output in the next `device` job log before
+anything else. Until then C-04 and K-07 are not confirmed on Android.
 
 ## Still open in Phase 2
 
 | ID | Problem | State |
 |---|---|---|
-| K-06 | Excel fonts display wrongly | Not started |
-| K-07 | Opening another file does nothing | Not reproduced on web; needs the emulator run |
-| K-08 | Grid lines and borders broken at zoom ≠ 100 % | Not started |
-| K-11 | Frozen header rows draw twice | Not started |
-| C-04 | "Open with Petak" does not open the file | Not started (Android intent / `content://` handling) |
-| H-03 | `.xls` opens without formatting | Not started |
-| H-06 | Unsaved changes prompt can't save | Not started; `AskDialog` / `ui.ask` already exist for Save / Don't save / Cancel |
+| C-04 | "Open with Petak" does not open the file | Written (`DocumentsPlugin.takeLaunchFile`, intent filters); needs the emulator |
+| K-07 | Opening another file does nothing | Worked on the emulator in run 23; not seen since the page drop above |
+| K-05 | Scroll / pinch speed | Compositor works; device fps not measured |
 | H-07 | Rich text flattened | Kept on save (C-01); not displayed as runs yet |
+| — | Emulator: page connection drops after Back | Diagnostics added; cause unknown |
 
 `AUDIT.md` statuses now show Fixed / Partly with the test that proves each fix; keep them current as items close.
 
@@ -117,11 +118,8 @@ What was built (details in `AUDIT.md` under each ID):
 
 ## Next, in order
 
-1. Fonts (K-06): Calibri → Carlito, Cambria → Caladea, Arial / Times / Courier → Liberation, CJK → Noto Sans CJK; download on first use with size shown; import own fonts; keep the original font name on save
-2. Files: "Open with" and `content://` (C-04), K-07 on the emulator, Save / Don't save / Cancel (H-06), clear errors, recent files
-3. Rendering: device-pixel aligned grid lines and borders (K-08), frozen panes drawn once (K-11)
-4. `.xls` formatting (H-03)
-5. Rerun the emulator job, update `AUDIT.md`, write the Phase 2 summary, commit
+1. Read the emulator diagnostics (page drop after Back), fix, confirm C-04 and K-07 there
+2. Write the Phase 2 summary
 6. Phase 3 leftovers: fill handle series, coloured reference highlights, group/outline, PDF export and page setup, workbook tabs, performance profile before/after
 7. Phase 4: workbook covering every function, compared with headless LibreOffice and Microsoft's examples; a test per feature; round-trip tests; tap counts for 10 everyday tasks
 8. Phase 5: 50 large-font rows + 50k × 20 file, fling and pinch for 10 s; 20-file stress test; Low / Mid / High tiers
@@ -138,6 +136,7 @@ npx vite preview --port 4173 &  # e2e suites run against this
 node tests/e2e/cells.mjs
 node tests/e2e/cells2.mjs
 node tests/e2e/draw-touch.mjs
+node tests/e2e/fonts.mjs && node tests/e2e/files.mjs && node tests/e2e/render.mjs
 node tests/e2e/part2.mjs && node tests/e2e/part3.mjs && node tests/e2e/part4.mjs
 BASE_URL=http://localhost:4173/ node tests/e2e/features.mjs   # default base is :5173
 ```
@@ -162,6 +161,10 @@ BASE_URL=http://localhost:4173/ node tests/e2e/features.mjs   # default base is 
 - On the phone profile the drawing area shows sheet y ≈ 62–440 (tool bar above, chips and the
   properties card below): taps outside it land on other UI
 - With a drawing tool kept on, the floating selection bar must stay hidden or it covers the next shape's start
+- Never `await` between disposing the old workbook and creating the new one (UI code reads `doc.wb`)
+- "Is this font installed?" must be asked through `local()`; comparing text widths lies (Android answers Arial with Roboto, Linux answers Calibri with Carlito)
+- The grid canvas is stretched on Low / Mid tiers (`canvasStretch`): measure rendering on the screenshot, not on the canvas
+- Device tests: taps must land between the drawing tool bar and the chips (sheet y ≈ 62–440)
 
 ## Constraints
 
