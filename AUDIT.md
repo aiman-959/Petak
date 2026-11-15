@@ -41,7 +41,7 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | C-01 | Critical | Saving destroys everything Petak does not model: pictures, hyperlinks, autofilter, named ranges, tables, page setup, rich text, column styles… **Save writes over the original file.** | Fixed: lossless save patches the original package (`ooxml-roundtrip.test.ts`, `features.mjs`) |
 | C-02 | Critical | Typing in a cell after a double tap (or with a keyboard) is thrown away | Fixed (`cells.mjs`) |
 | C-03 | Critical | Tapping a cell while typing a formula discards the formula | Fixed (`cells.mjs`) |
-| C-04 | Critical | "Open with Petak" starts the app but does not open the file | Fix written (plugin reads VIEW / EDIT / SEND intents, more file types); emulator run to confirm |
+| C-04 | Critical | "Open with Petak" starts the app but does not open the file | Fixed; confirmed on the emulator (running app, cold start, `.xls`) |
 | C-05 | Critical | Named ranges are not loaded: formulas using them show `#NAME?` (and that is what gets saved) | Fixed (unit tests) |
 | C-06 | Critical | Table references (`Sales[Amount]`) show `#ERROR!` | Fixed (unit tests) |
 | C-07 | Critical | Dates in Jan–Feb 1900 are one day off (`=DATE(1900,2,29)`) | Fixed (unit tests) |
@@ -51,7 +51,7 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | K-04 | High | Nothing snaps when a shape starts in the middle of a cell | Fixed (`draw.test.ts`, `draw-touch.mjs`) |
 | K-05 | High | Scrolling and pinch zoom are slow and stutter | Partly: GPU compositor works in e2e; device fps not measured yet |
 | K-06 | High | Excel fonts do not display correctly | Fixed (`fonts.mjs`, `fonts.test.ts`); look on a phone still to check |
-| K-07 | High | Opening another file does nothing on the phone | Open |
+| K-07 | High | Opening another file does nothing on the phone | Works on the emulator in 2 of 3 runs; in one the page disappeared on the second file (no crash log yet, capture is in place) |
 | K-08 | High | Grid lines and borders are broken / faded at zoom ≠ 100 % | Fixed (`render.mjs`) |
 | K-09 | High | Hyperlinks load as plain text | Fixed (`cells2.mjs`) |
 | K-10 | High | Pictures in files are not loaded | Fixed (`cells2.mjs`) |
@@ -126,6 +126,7 @@ Device-only observations (emulator) are in the section "On a real Android WebVie
 - **Planned fix:** native plugin method + event for VIEW/SEND intents (cold start and while
   running), copy the `content://` stream to the cache, open it; register xlsx, xlsm, xls, csv, ods.
 - **Fix:** `DocumentsPlugin` keeps the intent's file (cold start: `load()`, running: `handleOnNewIntent` + `openFile` event) and `takeLaunchFile()` hands it to the page, which asks about unsaved changes and opens it. The manifest now also takes `.xls`, `.ods`, tab-separated files, EDIT and SEND ("Share to Petak"). A file opened this way is often read-only: Save then asks where to put it. Not testable in the browser; the emulator job's "Open with" check is the proof.
+- **Emulator (Android 14, CI run of `5db8e92` and the one after):** with a workbook open and unsaved, `am start -a VIEW` on `roster.xlsx` shows "“Untitled.xlsx” has unsaved changes. Save them before you open “roster.xlsx”?" and then opens it; a second file (`qm-report.xlsx`) opens; `legacy.xls` opens with its formatting (A1 fill `#14532d`, 22 pt); from a stopped app the intent starts Petak with `people.csv`. Petak is listed as a handler for `content://` `.xls` files.
 
 ### C-05 Named ranges are not loaded
 - **Steps:** open a workbook with a name `Qty` and `=SUM(Qty)`. `audit6.mjs`.
