@@ -149,3 +149,62 @@ describe('financial & engineering', () => {
     expect(calc([], '=TYPE("a")')).toBe(2);
   });
 });
+
+describe('built-ins HyperFormula got wrong (Phase 4)', () => {
+  it('INT rounds down', () => {
+    expect(calc([], '=INT(-8.9)')).toBe(-9);
+    expect(calc([], '=INT(8.9)')).toBe(8);
+    expect(calc([], '=INT(-8)')).toBe(-8);
+  });
+  it('CEILING.MATH and FLOOR.MATH follow the mode for negative numbers', () => {
+    expect(calc([], '=CEILING.MATH(-5.5,2)')).toBe(-4);
+    expect(calc([], '=CEILING.MATH(-5.5,2,-1)')).toBe(-6);
+    expect(calc([], '=CEILING.MATH(-5.5,2,1)')).toBe(-6);
+    expect(calc([], '=CEILING.MATH(5.5,2,-1)')).toBe(6);
+    expect(calc([], '=CEILING.MATH(4.2)')).toBe(5);
+    expect(calc([], '=CEILING.MATH(6,-2)')).toBe(6);
+    expect(calc([], '=FLOOR.MATH(-5.5,2)')).toBe(-6);
+    expect(calc([], '=FLOOR.MATH(-5.5,2,-1)')).toBe(-4);
+    expect(calc([], '=FLOOR.MATH(5.5,2,1)')).toBe(4);
+    expect(calc([], '=FLOOR.MATH(24.3,5)')).toBe(20);
+    expect(calc([], '=CEILING.MATH(0.3,0.1)')).toBeCloseTo(0.3, 12);
+  });
+  it('INDEX with one index on a one-row array picks the column', () => {
+    expect(calc([], '=INDEX(TEXTSPLIT("a,b,c",","),2)')).toBe('b');
+    expect(calc([[1, 2, 3]], '=INDEX(A1:C1,3)')).toBe(3);
+    expect(calc([[1], [2], [3]], '=INDEX(A1:A3,2)')).toBe(2);
+    expect(calc([[1, 2], [3, 4]], '=INDEX(A1:B2,2,2)')).toBe(4);
+    expect(calc([[1, 2], [3, 4]], '=ERROR.TYPE(INDEX(A1:B2,3,1))')).toBe(4); // #REF!
+    expect(calc([[1, 2], [3, 4]], '=ERROR.TYPE(INDEX(A1:B2,0,1))')).toBe(3); // #VALUE!
+  });
+  it('VALUE reads currency, thousands separators, percent and brackets', () => {
+    expect(calc([], '=VALUE("$1,000")')).toBe(1000);
+    expect(calc([], '=VALUE("1,234.5")')).toBe(1234.5);
+    expect(calc([], '=VALUE("(1,234.50)")')).toBe(-1234.5);
+    expect(calc([], '=VALUE("-$12.5")')).toBe(-12.5);
+    expect(calc([], '=VALUE("15%")')).toBeCloseTo(0.15, 12);
+    expect(calc([], '=VALUE(" 42 ")')).toBe(42);
+    expect(calc([], '=VALUE("1e3")')).toBe(1000);
+    expect(calc([], '=ERROR.TYPE(VALUE("abc"))')).toBe(3);
+    expect(calc([], '=ERROR.TYPE(VALUE("1,23"))')).toBe(3);
+    expect(calc([['12']], '=VALUE(A1)')).toBe(12);
+  });
+  it('ISREF is TRUE for references only', () => {
+    expect(calc([[1]], '=ISREF(A1)')).toBe(true);
+    expect(calc([[1]], '=ISREF(A1:B3)')).toBe(true);
+    expect(calc([[1]], '=ISREF(Z99)')).toBe(true);
+    expect(calc([], '=ISREF(1)')).toBe(false);
+    expect(calc([], '=ISREF("A1")')).toBe(false);
+  });
+  it('the Excel 2007 distribution functions work', () => {
+    close(calc([], '=NORMSDIST(1.333333)'), 0.908788726);
+    close(calc([], '=LOGNORMDIST(4,3.5,1.2)'), 0.0390835557);
+    close(calc([], '=HYPGEOMDIST(1,4,8,20)'), 0.363261094);
+    close(calc([], '=NEGBINOMDIST(10,5,0.25)'), 0.0550486604);
+    close(calc([], '=BETADIST(2,8,10,1,3)'), 0.685470581);
+    close(calc([], '=BETADIST(0.4,2,3)'), 0.5248);
+    expect(calc([], '=ERROR.TYPE(BETADIST(4,8,10,1,3))')).toBe(6); // #NUM!
+    expect(calc([], '=ERROR.TYPE(LOGNORMDIST(-1,1,1))')).toBe(6);
+    expect(calc([], '=ERROR.TYPE(HYPGEOMDIST(5,4,8,20))')).toBe(6);
+  });
+});

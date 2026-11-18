@@ -76,6 +76,7 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | M-10 | Medium | Sheet rename uses the browser `prompt()`; no move/reorder of sheets | Fixed (`phase3.mjs`): rename dialog with Excel’s rules, move left / right |
 | L-01 | Low | CSV: `0012` becomes `12` (Excel does the same; Petak could keep text) | Fixed (`csv.test.ts`, `phase3.mjs`): leading-zero and long digit strings stay text; CSV dates get a date format |
 | L-02 | Low | "Opened file" toast covers the last visible row for 3 s | Fixed (`phase3.mjs`): messages at the top, see-through to taps |
+| F-01 | High | 11 built-in functions give wrong results: INT of negatives, CEILING.MATH / FLOOR.MATH mode, INDEX on a one-row array, VALUE("$1,000"), ISREF, and NORMSDIST, LOGNORMDIST, HYPGEOMDIST, NEGBINOMDIST, BETADIST (#N/A / #NUM!) | Fixed (`function-check.test.ts`, `functions.test.ts`): all 476 functions match Excel, see FUNCTION-CHECK.md |
 
 Device-only observations (emulator) are in the section "On a real Android WebView" at the end.
 
@@ -296,6 +297,32 @@ M-01…M-10 and L-01, L-02 are listed in the summary; each maps to a Phase 3 acc
 All are fixed; the proof for each is in the summary table and in `tests/e2e/phase3.mjs`. Also added in
 Phase 3: row / column grouping (Data → Group / Ungroup / Collapse / Expand, undoable, saved as Excel
 outline levels) and a long-press on a sheet tab that no longer closes its own menu.
+
+## Phase 4: every function and feature
+
+### F-01 Wrong function results
+Every function Petak lists (476) was given one worked example on a shared data block
+(`tests/functions/examples.mjs`) and computed by Petak and by LibreOffice 24.2 (headless, the
+file round-tripped as .xlsx); where LibreOffice lacks a function the reference is Excel's
+documented example. 11 were wrong, all in HyperFormula's own versions:
+
+| Formula | Was | Excel |
+|---|---|---|
+| `=INT(-8.9)` | -8 | -9 |
+| `=CEILING.MATH(-5.5,2,-1)` | -4 | -6 |
+| `=FLOOR.MATH(-5.5,2,-1)` | -6 | -4 |
+| `=INDEX(TEXTSPLIT("a,b,c",","),2)` | #NUM! | b |
+| `=VALUE("$1,000")` | #VALUE! | 1000 |
+| `=ISREF(A1)` | FALSE | TRUE |
+| `=NORMSDIST(1.333333)` | #N/A | 0.908788726 |
+| `=LOGNORMDIST(4,3.5,1.2)` | #N/A | 0.0390835557 |
+| `=HYPGEOMDIST(1,4,8,20)` | #N/A | 0.363261094 |
+| `=NEGBINOMDIST(10,5,0.25)` | #N/A | 0.0550486604 |
+| `=BETADIST(2,8,10,1,3)` | #NUM! | 0.685470581 |
+
+**Fixed:** Petak's own versions replace these (`src/engine/excelFunctions.ts`). INDEX past the
+end now gives #REF! as in Excel (was #NUM!). Seven more differ from LibreOffice but match Excel
+(LibreOffice deviates or lacks the function); the table in FUNCTION-CHECK.md says why for each.
 
 ## On a real Android WebView (emulator, API 34)
 

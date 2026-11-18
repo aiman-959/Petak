@@ -465,6 +465,18 @@ export class ExcelCompatPlugin extends FunctionPlugin {
     'FINDB': { method: 'findb', parameters: [P(T.STRING), P(T.STRING), opt(T.NUMBER, 1)] },
     'SEARCHB': { method: 'searchb', parameters: [P(T.STRING), P(T.STRING), opt(T.NUMBER, 1)] },
     'REPLACEB': { method: 'replaceb', parameters: [P(T.STRING), P(T.NUMBER), P(T.NUMBER), P(T.STRING)] },
+    // Built-ins HyperFormula gets wrong; these replace its versions (see FUNCTION-CHECK.md).
+    'INT': { method: 'intExcel', parameters: [P(T.NUMBER)] },
+    'CEILING.MATH': { method: 'ceilingmathExcel', parameters: [P(T.NUMBER), opt(T.NUMBER, 1), opt(T.NUMBER, 0)] },
+    'FLOOR.MATH': { method: 'floormathExcel', parameters: [P(T.NUMBER), opt(T.NUMBER, 1), opt(T.NUMBER, 0)] },
+    'INDEX': { method: 'indexExcel', parameters: [P(T.RANGE), P(T.NUMBER), opt(T.NUMBER)] },
+    'VALUE': { method: 'valueExcel', parameters: [P(T.SCALAR)] },
+    'ISREF': { method: 'isrefExcel', parameters: [P(T.SCALAR)], vectorizationForbidden: true, doesNotNeedArgumentsToBeComputed: true },
+    'NORMSDIST': { method: 'normsdist', parameters: [P(T.NUMBER)] },
+    'LOGNORMDIST': { method: 'lognormdist', parameters: [P(T.NUMBER), P(T.NUMBER), P(T.NUMBER)] },
+    'HYPGEOMDIST': { method: 'hypgeomdist', parameters: [P(T.NUMBER), P(T.NUMBER), P(T.NUMBER), P(T.NUMBER)] },
+    'NEGBINOMDIST': { method: 'negbinomdist', parameters: [P(T.NUMBER), P(T.NUMBER), P(T.NUMBER)] },
+    'BETADIST': { method: 'betadistLegacy', parameters: [P(T.NUMBER), P(T.NUMBER), P(T.NUMBER), opt(T.NUMBER, 0), opt(T.NUMBER, 1)] },
   };
 
   private run(ast: Ast, state: unknown, name: string, fn: (...a: never[]) => unknown) {
@@ -1347,6 +1359,149 @@ export class ExcelCompatPlugin extends FunctionPlugin {
   replaceb(ast: Ast, s: unknown) {
     return this.run(ast, s, 'REPLACEB', (t: string, start: number, n: number, nw: string) => (start < 1 || n < 0 ? VALUE() : t.slice(0, start - 1) + nw + t.slice(start - 1 + n)));
   }
+
+  // ---------------- corrected built-ins
+  /** INT rounds down, so INT(-8.9) is -9 (HyperFormula truncated towards zero). */
+  intExcel(ast: Ast, s: unknown) {
+    return this.run(ast, s, 'INT', (x: number) => Math.floor(x));
+  }
+  /** CEILING.MATH: a non-zero mode rounds negative numbers away from zero. */
+  ceilingmathExcel(ast: Ast, s: unknown) {
+    return this.run(ast, s, 'CEILING.MATH', (x: number, sig: number, mode: number) => roundMath(x, sig, mode, true));
+  }
+  /** FLOOR.MATH: a non-zero mode rounds negative numbers towards zero. */
+  floormathExcel(ast: Ast, s: unknown) {
+    return this.run(ast, s, 'FLOOR.MATH', (x: number, sig: number, mode: number) => roundMath(x, sig, mode, false));
+  }
+  /** INDEX with one index on a one-row array picks the column, as in Excel. */
+  indexExcel(ast: Ast, s: unknown) {
+    return this.run(ast, s, 'INDEX', (range: SimpleRangeValue, row: number, col?: number) => {
+      if (col === undefined) {
+        if (range.height() === 1 && range.width() > 1) [row, col] = [1, row];
+        else col = 1;
+      }
+      row = Math.trunc(row);
+      col = Math.trunc(col);
+      if (row < 1 || col < 1) return VALUE('Index must be at least 1');
+      if (row > range.height() || col > range.width()) return err(ErrorType.REF, 'Index out of range');
+      const v = (range.data as unknown[][])[row - 1]?.[col - 1];
+      return v === undefined || typeof v === 'symbol' ? 0 : v;
+    });
+  }
+  /** VALUE also reads currency signs and thousands separators: VALUE("$1,000") is 1000. */
+  valueExcel(ast: Ast, s: unknown) {
+    return this.run(ast, s, 'VALUE', (arg: unknown) => {
+      if (isErr(arg)) return arg;
+      if (typeof arg === 'number' || (arg && typeof arg === 'object' && 'val' in (arg as object))) return arg;
+      if (typeof arg !== 'string') return VALUE('Cannot convert to a number');
+      let t = arg.trim();
+      if (t === '') return 0;
+      let neg = false;
+      const paren = /^\((.*)\)$/.exec(t);
+      if (paren) {
+        neg = true;
+        t = paren[1].trim();
+      }
+      const coerce = (x: string) => (this as unknown as { arithmeticHelper: { coerceToMaybeNumber(v: string): unknown } }).arithmeticHelper.coerceToMaybeNumber(x);
+      let v = coerce(t);
+      if (v === undefined) {
+        // "$1,000.50", "-€ 1 000", "1,234%": drop the currency sign and group separators.
+        const m = /^([+-]?)\s*[$€£¥₹₸₽]?\s*([+-]?)(\d{1,3}(?:[, ]\d{3})+|\d+)?(\.\d*)?\s*(%?)\s*[$€£¥₹₸₽]?$/.exec(t);
+        if (m && (m[3] || m[4])) {
+          const n = Number((m[3] ?? '0').replace(/[, ]/g, '') + (m[4] ?? ''));
+          v = ((m[1] === '-') !== (m[2] === '-') ? -n : n) / (m[5] ? 100 : 1);
+        }
+      }
+      if (v === undefined) return VALUE('Cannot convert to a number');
+      const n = num(v);
+      return neg && n !== null ? -n : v;
+    });
+  }
+  /** ISREF is TRUE for a cell or range reference, whatever the cell holds. */
+  isrefExcel(ast: Ast) {
+    if (ast.args.length !== 1) return NA();
+    return ['CELL_REFERENCE', 'CELL_RANGE', 'COLUMN_RANGE', 'ROW_RANGE'].includes(String(ast.args[0]?.type));
+  }
+  // Excel 2007 distribution functions: HyperFormula mapped them onto the newer
+  // functions without the "cumulative" argument, so they returned #N/A or #NUM!.
+  normsdist(ast: Ast, s: unknown) {
+    return this.run(ast, s, 'NORMSDIST', (x: number) => normCdf(x));
+  }
+  lognormdist(ast: Ast, s: unknown) {
+    return this.run(ast, s, 'LOGNORMDIST', (x: number, mu: number, sd: number) => (x <= 0 || sd <= 0 ? NUM() : normCdf((Math.log(x) - mu) / sd)));
+  }
+  hypgeomdist(ast: Ast, s: unknown) {
+    return this.run(ast, s, 'HYPGEOMDIST', (k: number, n: number, K: number, N: number) => {
+      [k, n, K, N] = [k, n, K, N].map(Math.trunc);
+      if (k < 0 || k > n || k > K || n > N || K > N || n - k > N - K || n < 0 || K < 0) return NUM();
+      return Math.exp(lnChoose(K, k) + lnChoose(N - K, n - k) - lnChoose(N, n));
+    });
+  }
+  negbinomdist(ast: Ast, s: unknown) {
+    return this.run(ast, s, 'NEGBINOMDIST', (f: number, r: number, p: number) => {
+      f = Math.trunc(f);
+      r = Math.trunc(r);
+      if (f < 0 || r < 1 || p < 0 || p > 1) return NUM();
+      if (p === 1) return f === 0 ? 1 : 0;
+      if (p === 0) return 0;
+      return Math.exp(lnChoose(f + r - 1, r - 1) + r * Math.log(p) + f * Math.log(1 - p));
+    });
+  }
+  betadistLegacy(ast: Ast, s: unknown) {
+    return this.run(ast, s, 'BETADIST', (x: number, a: number, b: number, lo: number, hi: number) => {
+      if (a <= 0 || b <= 0 || x < lo || x > hi || lo === hi) return NUM();
+      return betaInc((x - lo) / (hi - lo), a, b);
+    });
+  }
+}
+
+const lnChoose = (n: number, k: number) => lnGamma(n + 1) - lnGamma(k + 1) - lnGamma(n - k + 1);
+const normCdf = (x: number) => 0.5 * (1 + erf(x / Math.SQRT2));
+
+/** Shared rule of CEILING.MATH (up) and FLOOR.MATH (down). */
+function roundMath(x: number, sig: number, mode: number, up: boolean): number {
+  if (sig === 0 || x === 0) return 0;
+  sig = Math.abs(sig);
+  const q = x / sig;
+  // Tiny tolerance so 4.000000000001 multiples are not pushed a step further.
+  const r = (f: (v: number) => number) => f(Math.abs(q - Math.round(q)) < 1e-12 ? Math.round(q) : q) * sig;
+  if (x > 0 || mode === 0) return r(up ? Math.ceil : Math.floor);
+  // negative number with a mode: CEILING goes away from zero, FLOOR towards zero
+  return r(up ? Math.floor : Math.ceil);
+}
+
+/** Regularised incomplete beta function I_x(a, b) (Numerical Recipes, Lentz). */
+export function betaInc(x: number, a: number, b: number): number {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const front = Math.exp(lnGamma(a + b) - lnGamma(a) - lnGamma(b) + a * Math.log(x) + b * Math.log(1 - x));
+  if (x > (a + 1) / (a + b + 2)) return 1 - betaInc(1 - x, b, a);
+  const tiny = 1e-300;
+  let c = 1;
+  let d = 1 - ((a + b) * x) / (a + 1);
+  if (Math.abs(d) < tiny) d = tiny;
+  d = 1 / d;
+  let h = d;
+  for (let m = 1; m <= 300; m++) {
+    const m2 = 2 * m;
+    let aa = (m * (b - m) * x) / ((a + m2 - 1) * (a + m2));
+    d = 1 + aa * d;
+    if (Math.abs(d) < tiny) d = tiny;
+    c = 1 + aa / c;
+    if (Math.abs(c) < tiny) c = tiny;
+    d = 1 / d;
+    h *= d * c;
+    aa = (-(a + m) * (a + b + m) * x) / ((a + m2) * (a + m2 + 1));
+    d = 1 + aa * d;
+    if (Math.abs(d) < tiny) d = tiny;
+    c = 1 + aa / c;
+    if (Math.abs(c) < tiny) c = tiny;
+    d = 1 / d;
+    const del = d * c;
+    h *= del;
+    if (Math.abs(del - 1) < 1e-15) break;
+  }
+  return (front * h) / a;
 }
 
 const ERROR_TEXT: Record<string, string> = { DIV_BY_ZERO: '#DIV/0!', NA: '#N/A', NAME: '#NAME?', NUM: '#NUM!', REF: '#REF!', VALUE: '#VALUE!', CYCLE: '#CYCLE!', ERROR: '#ERROR!', SPILL: '#SPILL!', LIC: '#LIC!' };
