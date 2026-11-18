@@ -13,22 +13,24 @@ const R = report();
 if (apk) adb('install', '-r', '-g', apk);
 sh('mkdir -p /sdcard/Download');
 for (const f of fs.readdirSync(fixtures)) if (fs.statSync(path.join(fixtures, f)).isFile()) adb('push', path.join(fixtures, f), '/sdcard/Download/' + f);
-sh(`am force-stop ${PKG}`);
-launch();
-await sleep(6000);
-const { page } = await attach();
-await page.waitForFunction(() => window.__doc?.snapshot?.sheets?.length > 0, null, { timeout: 90000 });
-await sleep(1500);
-screencap('launch');
-
 /** Which content providers of other apps Petak's process holds right now, plus its own font-related log lines. */
 const providerLinks = () => {
   const safe = (f) => { try { return String(f()).trim(); } catch (e) { return 'ERR ' + String(e.message).slice(0, 120); } };
   const links = safe(() => sh(`dumpsys activity providers | awk '/ContentProviderRecord\\{/ {rec=$0} /->.*${PKG}/ {print rec}' | sed 's/.*ContentProviderRecord{[^ ]* [^ ]* //' | sort -u || true`));
   const pid = safe(() => sh(`pidof ${PKG}`));
-  const log = /^\d+$/.test(pid) ? safe(() => sh(`logcat -d --pid=${pid} | grep -iE "fontscontract|fontrequest|fontsprovider|fonts.provider|downloadable|emoji|gms" | tail -6 || true`)) : '';
+  const log = /^\d+$/.test(pid) ? safe(() => sh(`logcat -d --pid=${pid} | grep -iE "font|emoji|gms" | grep -viE "Davey|OpenGLRenderer" | tail -8 || true`)) : '';
   return { pid, links: links.split('\n').filter(Boolean), log: log.slice(0, 1200) };
 };
+sh(`am force-stop ${PKG}`);
+launch();
+await sleep(700);
+await R.check('provider links 0.7 s after launch (native start-up, WebView barely loaded)', providerLinks);
+await sleep(5300);
+const { page } = await attach();
+await page.waitForFunction(() => window.__doc?.snapshot?.sheets?.length > 0, null, { timeout: 90000 });
+await sleep(1500);
+screencap('launch');
+
 await R.check('built APK manifest: emoji start-up (fetches a font from Play services) removed? expect emoji: 0', () => {
   if (!apk) return 'no apk given';
   const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
@@ -36,11 +38,11 @@ await R.check('built APK manifest: emoji start-up (fetches a font from Play serv
   const out = execFileSync(path.join(sdk, 'build-tools', bt, 'aapt2'), ['dump', 'xmltree', '--file', 'AndroidManifest.xml', apk], { encoding: 'utf8', maxBuffer: 16 << 20 });
   return { emoji: (out.match(/EmojiCompatInitializer/g) || []).length, lines: out.split('\n').filter((l) => /startup|emoji|Initializer|ProfileInstaller|lifecycle/i.test(l)).map((l) => l.trim()).slice(0, 12) };
 });
-await R.check('provider links at start', providerLinks);
 await R.check('user agent', () => page.evaluate(() => navigator.userAgent));
 await R.check('devicePixelRatio / viewport', () => page.evaluate(() => [window.devicePixelRatio, innerWidth, innerHeight]));
 await R.check('tier', () => page.evaluate(() => [document.documentElement.dataset.tier, navigator.deviceMemory, navigator.hardwareConcurrency]));
 await R.check('crossOriginIsolated / shared mode', () => page.evaluate(() => [crossOriginIsolated, window.__governor?.stats?.shared]));
+await R.check('provider links after the page loaded, before any font test', providerLinks);
 await R.check('fonts available (Calibri, Carlito, Arial, Liberation Sans, Roboto, Noto Sans CJK SC)', () =>
   page.evaluate(() => ['Calibri', 'Carlito', 'Arial', 'Liberation Sans', 'Roboto', 'Noto Sans CJK SC', 'Times New Roman', 'Courier New'].map((f) => {
     const c = document.createElement('canvas').getContext('2d');
@@ -51,6 +53,7 @@ await R.check('fonts available (Calibri, Carlito, Arial, Liberation Sans, Roboto
   })),
 );
 
+await R.check('provider links after the font-name test (canvas with Calibri, Carlito, Roboto…)', providerLinks);
 const cal = await R.check('touch calibration', async () => {
   const c = await calibrate(page);
   return c;
