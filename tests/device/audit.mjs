@@ -20,6 +20,15 @@ await page.waitForFunction(() => window.__doc?.snapshot?.sheets?.length > 0, nul
 await sleep(1500);
 screencap('launch');
 
+/** Which content providers of other apps Petak's process holds right now, plus its own font-related log lines. */
+const providerLinks = () => {
+  const safe = (f) => { try { return String(f()).trim(); } catch (e) { return 'ERR ' + String(e.message).slice(0, 120); } };
+  const links = safe(() => sh(`dumpsys activity providers | awk '/ContentProviderRecord\\{/ {rec=$0} /->.*${PKG}/ {print rec}' | sed 's/.*ContentProviderRecord{[^ ]* [^ ]* //' | sort -u || true`));
+  const pid = safe(() => sh(`pidof ${PKG}`));
+  const log = /^\d+$/.test(pid) ? safe(() => sh(`logcat -d --pid=${pid} | grep -iE "fontscontract|fontrequest|fontsprovider|fonts.provider|downloadable|emoji|gms" | tail -6 || true`)) : '';
+  return { pid, links: links.split('\n').filter(Boolean), log: log.slice(0, 1200) };
+};
+await R.check('provider links at start', providerLinks);
 await R.check('user agent', () => page.evaluate(() => navigator.userAgent));
 await R.check('devicePixelRatio / viewport', () => page.evaluate(() => [window.devicePixelRatio, innerWidth, innerHeight]));
 await R.check('tier', () => page.evaluate(() => [document.documentElement.dataset.tier, navigator.deviceMemory, navigator.hardwareConcurrency]));
@@ -145,6 +154,7 @@ await R.check('after Back: is the app still in front? (activity, process, crash 
 });
 if (await page.evaluate(() => window.__draw.get().active).catch(() => false)) await page.click('[data-testid=draw-close]').catch(() => {});
 
+await R.check('provider links after drawing', providerLinks);
 // ---- files: "Open with" from another app (C-04), a second file while one is open (K-07), cold start.
 // The system picker is not driven here: `uiautomator dump` and Playwright's device driver both
 // knock out the page connection on CI. It was checked by hand-driven taps in run 23.
@@ -182,6 +192,7 @@ const openWith = async (name, mime) => {
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 await R.check('"Open with" while the app is running (roster.xlsx; the open workbook has unsaved changes)', () => openWith('roster.xlsx', XLSX_MIME));
 screencap('roster');
+await R.check('provider links after opening roster.xlsx', providerLinks);
 await R.check('"Open with" a second file (qm-report.xlsx): K-07', () => openWith('qm-report.xlsx', XLSX_MIME));
 screencap('qm-report');
 await R.check('after 2nd open: toast / dialogs / page errors', () => page.evaluate(() => [document.querySelector('.toast')?.textContent, document.querySelector('[data-testid=ask-text]')?.textContent ?? null]));
