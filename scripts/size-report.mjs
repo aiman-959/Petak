@@ -79,7 +79,11 @@ md += `## What was removed\n\n`;
 md += `- Univer hyphenation dictionaries for 77 languages (≈4.6 MB): replaced at build time by empty patterns (\`vite.config.ts\`); spreadsheet cells do not hyphenate and English is built in.\n`;
 md += `- Android translations bundled by AndroidX (\`localeFilters = ["en"]\`).\n`;
 md += `- Unused Java/Kotlin code and resources (R8 \`minifyEnabled\` + \`shrinkResources\`).\n`;
-md += `- One font file only: Space Grotesk Bold, Latin subset (${kb(rows.find((r) => /space-grotesk/.test(r.rel))?.raw ?? 0)}), for the wordmark; the UI uses the system font.\n`;
+{
+  const fonts = rows.filter((r) => r.rel.endsWith('.woff2'));
+  const subst = fonts.filter((r) => /carlito|caladea|arimo|tinos|cousine/.test(r.rel));
+  md += `- Fonts: Space Grotesk Bold, Latin subset (${kb(fonts.find((r) => /space-grotesk/.test(r.rel))?.raw ?? 0)}), for the wordmark; the UI uses the system font. Excel's Calibri, Cambria, Arial, Times New Roman and Courier New are shown with their metric-compatible open substitutes (Carlito, Caladea, Arimo, Tinos, Cousine: ${subst.length} files, ${mb(subst.reduce((a, r) => a + r.raw, 0))}, Latin, Cyrillic and Greek), bundled because asking Android for fonts can get the app killed (K-06, K-07).\n`;
+}
 md += `- Source maps are not shipped; JavaScript is minified and tree-shaken, features are split into lazy chunks and workers.\n`;
 
 fs.writeFileSync(path.join(root, 'SIZE.md'), md);

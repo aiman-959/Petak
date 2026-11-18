@@ -10,7 +10,7 @@ a precision drawing layer with true-scale export, JavaScript macros and a Power-
 License: **GNU GPL v3** (see [LICENSE](LICENSE)). Third-party components: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 > **Download:** the latest APK is on the [Releases page](https://github.com/aiman-959/petak/releases/latest)
-> (`Petak-v1.2.0.apk`, 3.9 MB). See [Install](#install).
+> (`Petak-v1.2.0.apk`, 6.1 MB). See [Install](#install).
 >
 > **1.2.0** is a quality release: every function, menu command and sample file was tested on a phone
 > screen, and 43 problems were fixed. What was tested and how: [TEST-REPORT.md](TEST-REPORT.md); every
@@ -84,10 +84,12 @@ Screenshots come from the production web build at phone/tablet sizes (`node scri
   ([tests/perf/RESULTS.md](tests/perf/RESULTS.md)).
 
 ### App size
-Release APK **3.9 MB** (budget 40 MB). Full breakdown per build and module: [SIZE.md](SIZE.md) (`npm run size`).
+Release APK **6.1 MB** (budget 40 MB). Full breakdown per build and module: [SIZE.md](SIZE.md) (`npm run size`).
 * Heavy optional engines download on first use with their size shown first: DuckDB (6.6 MB download, 35.7 MB on device).
 * Unused Univer hyphenation dictionaries for 77 languages removed at build time; English-only Android resources;
-  R8 code and resource shrinking; one font file (Space Grotesk Bold, Latin, 13 kB); minified, tree-shaken, code-split JS.
+  R8 code and resource shrinking; minified, tree-shaken, code-split JS.
+* 2.4 MB of the APK are open fonts that stand in for Excel's (Carlito for Calibri, Caladea for Cambria, Arimo,
+  Tinos and Cousine for Arial, Times New Roman and Courier New), so files keep their line breaks and column fits.
 * Per-ABI APKs are built alongside the universal APK. They are the same size because Petak has no native code.
 
 ---
