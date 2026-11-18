@@ -6,6 +6,7 @@
 import { adb, sh, sleep, attach, launch, screencap, calibrate, keyboardShown, report, PKG } from './lib.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const [apk, fixtures = 'tests/fixtures/files'] = process.argv.slice(2);
 const R = report();
@@ -28,6 +29,13 @@ const providerLinks = () => {
   const log = /^\d+$/.test(pid) ? safe(() => sh(`logcat -d --pid=${pid} | grep -iE "fontscontract|fontrequest|fontsprovider|fonts.provider|downloadable|emoji|gms" | tail -6 || true`)) : '';
   return { pid, links: links.split('\n').filter(Boolean), log: log.slice(0, 1200) };
 };
+await R.check('built APK manifest: emoji start-up (fetches a font from Play services) removed? expect emoji: 0', () => {
+  if (!apk) return 'no apk given';
+  const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
+  const bt = fs.readdirSync(path.join(sdk, 'build-tools')).sort().pop();
+  const out = execFileSync(path.join(sdk, 'build-tools', bt, 'aapt2'), ['dump', 'xmltree', '--file', 'AndroidManifest.xml', apk], { encoding: 'utf8', maxBuffer: 16 << 20 });
+  return { emoji: (out.match(/EmojiCompatInitializer/g) || []).length, lines: out.split('\n').filter((l) => /startup|emoji|Initializer|ProfileInstaller|lifecycle/i.test(l)).map((l) => l.trim()).slice(0, 12) };
+});
 await R.check('provider links at start', providerLinks);
 await R.check('user agent', () => page.evaluate(() => navigator.userAgent));
 await R.check('devicePixelRatio / viewport', () => page.evaluate(() => [window.devicePixelRatio, innerWidth, innerHeight]));

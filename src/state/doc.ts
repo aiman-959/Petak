@@ -320,14 +320,18 @@ class Doc {
     if (!this.snap.dirty) this.emit({ dirty: true });
     this.scheduleAutosave();
   }
-  private scheduleAutosave() {
+  private scheduleAutosave(ms = governor.backgroundDelay(getTier().autosaveMs)) {
     clearTimeout(this.autosaveTimer);
-    this.autosaveTimer = setTimeout(() => this.autosave(), governor.backgroundDelay(getTier().autosaveMs));
+    this.autosaveTimer = setTimeout(() => this.autosave(), ms);
   }
-  /** After a whole workbook was (re)loaded: everything must be written once. */
+  /**
+   * After a whole workbook was (re)loaded: everything must be written once, and soon. Android can
+   * end the app at any moment (memory, or when a service it uses restarts); the next start restores
+   * the saved session, which must then be the file just opened, not the one before it (K-07).
+   */
   private markAllForSave() {
     this.saver.markAll(this.wb.getSheets().map((s) => s.getSheetId()));
-    this.scheduleAutosave();
+    this.scheduleAutosave(400);
   }
 
   private disposeCurrent() {

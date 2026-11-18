@@ -132,6 +132,16 @@ await step('Back closes the top-most dialog or sheet, one at a time; with nothin
   await ev(() => { window.__doc.emit?.({ dirty: false }); return 0; });
 });
 
+await step('Android ends the app a moment after a file was opened: the restart shows that file (K-07)', async () => {
+  await page.waitForSelector('.toast', { state: 'detached', timeout: 15000 }).catch(() => {});
+  await t.openFile(F('qm-report.xlsx'));
+  await page.waitForTimeout(1500); // far less than the 10–20 s autosave interval
+  await page.goto(BASE); // no ?fresh: the app restores its saved session, as after a restart
+  await page.waitForFunction(() => window.__doc?.snapshot?.sheets?.length > 0, null, { timeout: 60000 });
+  assert.equal(await name(), 'qm-report.xlsx');
+  assert.deepEqual(await ev(() => window.__doc.snapshot.sheets.map((s) => s.name)), ['QM Report', 'Summary']);
+});
+
 await step('an old .xls opens with its fonts, colours, borders and sizes; Save writes a new .xlsx', async () => {
   await page.waitForSelector('.toast', { state: 'detached', timeout: 15000 }).catch(() => {});
   await pick(() => page.click('[data-testid=open]'), F('legacy.xls'));
