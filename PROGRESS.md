@@ -54,7 +54,7 @@ report and build). `AUDIT.md` holds every bug with its ID; this file says where 
 Also new: recent files, clear messages when a file cannot be opened, Format → Font & size with
 your own font files, Android Back button handled by the page.
 
-### Last full test run (commit `0811fba`)
+### Last full test run (commit `cb44b73`)
 
 | Suite | Result |
 |---|---|
