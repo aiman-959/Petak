@@ -223,6 +223,11 @@ Device-only observations (emulator) are in the section "On a real Android WebVie
   (`files.mjs`: open, reload 1.5 s later, the new file is there; fails without the change).
   On a phone Play services rarely restarts; on the freshly booted CI emulator it does so often,
   which is why the device job saw it in about one run in three.
+- **Emulator after the change (run of `adaed19`):** Android ended Petak again (same reason) during an
+  "Open with"; the restarted app showed the file that had just been opened (`qm-report.xlsx`), and
+  the next "Open with" (`legacy.xls`) and a cold start worked. If the app is ended before it has
+  even read the incoming file, that one "Open with" is lost and has to be repeated; Android does not
+  hand the file over again.
 
 ### K-08 Grid lines and borders broken at zoom ≠ 100 %
 - **Steps:** roster or QM report, zoom to 85 %, 70 %, 60 %. `audit1.mjs`, `audit3.mjs` (screenshots `21-roster-zoom-0.85.png`).
