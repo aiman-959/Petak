@@ -51,7 +51,7 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | K-04 | High | Nothing snaps when a shape starts in the middle of a cell | Fixed (`draw.test.ts`, `draw-touch.mjs`) |
 | K-05 | High | Scrolling and pinch zoom are slow and stutter | Partly: GPU compositor works in e2e; device fps not measured yet |
 | K-06 | High | Excel fonts do not display correctly | Fixed (`fonts.mjs`, `fonts.test.ts`); look on a phone still to check |
-| K-07 | High | Opening another file does nothing on the phone | Works on the emulator in 2 of 3 runs; in one the page disappeared on the second file (no crash log yet, capture is in place) |
+| K-07 | High | Opening another file does nothing on the phone | Cause found; mitigated (`files.mjs`). Opening a second file works on the emulator |
 | K-08 | High | Grid lines and borders are broken / faded at zoom ≠ 100 % | Fixed (`render.mjs`) |
 | K-09 | High | Hyperlinks load as plain text | Fixed (`cells2.mjs`) |
 | K-10 | High | Pictures in files are not loaded | Fixed (`cells2.mjs`) |
@@ -208,6 +208,21 @@ Device-only observations (emulator) are in the section "On a real Android WebVie
 ### K-07 Opening another file does nothing
 - **Steps:** open a file, then open a second one. Works in the browser build (`audit1.mjs`: canvas changes). See device run for the phone.
 - **Planned fix:** see device section; plus Save / Don't save / Cancel prompt, clear errors, progress.
+- **Cause (emulator logs):** Android ended the app: `Killing com.zetl.petak: depends on provider
+  com.google.android.gms/.fonts.provider.FontsProvider in dying proc com.google.android.gms.persistent`.
+  For its first seconds Petak's process holds a connection to Play services' font provider; when
+  Play services restarts in that window, Android kills every app holding such a connection. The
+  next start restored the session saved *before* the new file was opened, so the file seemed not
+  to open. The connection is there 0.7 s after launch, before the page has loaded a single font,
+  and goes away by itself: it is the system WebView's own start-up (Chromium fetches Play services'
+  list of downloadable fonts when its renderer starts), which an app cannot switch off. Removed on
+  Petak's side anyway: AndroidX emoji start-up (also fetches from that provider) and every CSS
+  `local()` font lookup (the WebView answers those through the same provider).
+- **Mitigation:** the session is saved 0.4 s after any workbook is loaded instead of after the 10–20 s
+  autosave interval, so if Android ends the app the restart shows the file just opened
+  (`files.mjs`: open, reload 1.5 s later, the new file is there; fails without the change).
+  On a phone Play services rarely restarts; on the freshly booted CI emulator it does so often,
+  which is why the device job saw it in about one run in three.
 
 ### K-08 Grid lines and borders broken at zoom ≠ 100 %
 - **Steps:** roster or QM report, zoom to 85 %, 70 %, 60 %. `audit1.mjs`, `audit3.mjs` (screenshots `21-roster-zoom-0.85.png`).

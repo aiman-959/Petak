@@ -11,7 +11,7 @@ report and build). `AUDIT.md` holds every bug with its ID; this file says where 
 | Phase | State |
 |---|---|
 | 1. Full audit | **Done.** `AUDIT.md` written (7 Critical, 12 Known, 7 High, Medium/Low, emulator findings). |
-| 2. Known problems | **Nearly done.** All 12 known problems and the Critical / High items have a fix and a test, except: an intermittent page loss on the emulator when a second file is opened (K-07) and device fps (K-05, about 28 fps on the software-rendered emulator). |
+| 2. Known problems | **Nearly done.** All 12 known problems and the Critical / High items have a fix and a test, except device fps (K-05: 28–38 fps on the software-rendered emulator; a real phone is needed). |
 | 3. Acceptance criteria | Partly covered by the Phase 2 work (cell interaction, links, pictures). Rest not started. |
 | 4. Every function and feature | Not started. |
 | 5. Performance and stability | Not started (scroll/pinch compositor is built, device numbers not measured). |
@@ -44,6 +44,7 @@ report and build). `AUDIT.md` holds every bug with its ID; this file says where 
 | K-08 | Borders faded / missing at zoom ≠ 100 % | `render.mjs` (screenshot measured at 60–130 %) |
 | K-11 | Frozen panes overlap | no longer reproduces; `render.mjs` |
 | C-04 | "Open with Petak" | emulator: running app, second file, `.xls`, cold start |
+| K-07 | Opening another file does nothing | cause found (Android ends the app when Play services restarts); session saved 0.4 s after opening; `files.mjs` |
 | H-03 | `.xls` without formatting | `biff.test.ts`, `files.mjs` |
 | H-06 | Unsaved prompt can't save | `files.mjs` |
 | H-07 | Rich text flattened | `richtext.test.ts`, `files.mjs` |
@@ -57,13 +58,13 @@ your own font files, Android Back button handled by the page.
 
 | Suite | Result |
 |---|---|
-| Unit (Vitest, 19 files) | 134 / 134 |
+| Unit (Vitest, 21 files) | 136 / 136 |
 | `tests/e2e/cells.mjs` | 16 / 16 |
 | `tests/e2e/cells2.mjs` | 12 / 12 |
 | `tests/e2e/draw-touch.mjs` | 24 / 24 |
 | `tests/e2e/part3.mjs` | 18 / 18 |
 | `tests/e2e/fonts.mjs` | 8 / 8 |
-| `tests/e2e/files.mjs` | 11 / 11 |
+| `tests/e2e/files.mjs` | 12 / 12 |
 | `tests/e2e/render.mjs` | 10 / 10 |
 | `tests/e2e/features.mjs` | 19 / 19 |
 | `tests/e2e/part2.mjs` | 16 / 16 |
@@ -71,12 +72,13 @@ your own font files, Android Back button handled by the page.
 
 Emulator (CI `device` job, Android 14 WebView): line, rectangle (fit to cells, tool back to
 Select), tap-select, polyline by double tap and Back out of drawing mode all work.
-Emulator, files (run of `d5…`/`5db8e92` and the next): "Open with" works with the app running
-(asks about unsaved changes first), for a second file, for the old `.xls` (with formatting) and from
-a cold start. **One run out of three lost the page when the second file was opened** (K-07 was
-reported as "opening another file does nothing", so this may be the same thing: a WebView
-renderer that dies and the app coming back with the old session). The device script now saves the
-crash log, process id and memory when that happens: look for `"log":` in the `device` job output.
+Emulator, files: "Open with" works with the app running (asks about unsaved changes first), for a
+second file, for the old `.xls` (with formatting) and from a cold start. When the page vanished on
+the second file (about one run in three) Android had ended Petak because the system WebView holds a
+connection to Play services' font provider during its first seconds and Play services restarted
+(details under K-07 in `AUDIT.md`). Not switchable from the app; mitigated by saving the session
+0.4 s after a file opens. The device script re-attaches after such a restart and reports what the
+restarted app shows (`afterRestart`).
 
 Device-script lessons: `adb shell uiautomator dump` and Playwright's `device.wait/tap` (driver apk
 not installed) both kill the page connection ("Target page, context or browser has been closed").
@@ -86,7 +88,6 @@ The script therefore opens files only through intents; the system picker is not 
 
 | ID | Problem | State |
 |---|---|---|
-| K-07 | Opening another file does nothing | Works on the emulator, but 1 run in 3 lost the page on the second file; crash-log capture in place |
 | K-05 | Scroll / pinch speed | Compositor works; device fps not measured |
 
 `AUDIT.md` statuses now show Fixed / Partly with the test that proves each fix; keep them current as items close.
@@ -123,7 +124,7 @@ What was built (details in `AUDIT.md` under each ID):
 
 ## Next, in order
 
-1. Watch the `device` job for the second-file page loss (K-07) and read its crash log when it happens
+1. Check one `device` job log: after a restart on the second file, `afterRestart` should name that file
 2. Write the Phase 2 summary
 6. Phase 3 leftovers: fill handle series, coloured reference highlights, group/outline, PDF export and page setup, workbook tabs, performance profile before/after
 7. Phase 4: workbook covering every function, compared with headless LibreOffice and Microsoft's examples; a test per feature; round-trip tests; tap counts for 10 everyday tasks
@@ -169,6 +170,7 @@ BASE_URL=http://localhost:4173/ node tests/e2e/features.mjs   # default base is 
 - Never `await` between disposing the old workbook and creating the new one (UI code reads `doc.wb`)
 - "Is this font installed?" must be asked through `local()`; comparing text widths lies (Android answers Arial with Roboto, Linux answers Calibri with Carlito)
 - The grid canvas is stretched on Low / Mid tiers (`canvasStretch`): measure rendering on the screenshot, not on the canvas
+- Device script: never `adb shell uiautomator dump` or Playwright `device.tap/wait` (both cut the page connection); open files through intents
 - Device tests: taps must land between the drawing tool bar and the chips (sheet y ≈ 62–440)
 
 ## Constraints

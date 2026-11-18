@@ -26,7 +26,7 @@ launch();
 await sleep(700);
 await R.check('provider links 0.7 s after launch (native start-up, WebView barely loaded)', providerLinks);
 await sleep(5300);
-const { page } = await attach();
+let { page } = await attach();
 await page.waitForFunction(() => window.__doc?.snapshot?.sheets?.length > 0, null, { timeout: 90000 });
 await sleep(1500);
 screencap('launch');
@@ -192,7 +192,18 @@ const openWith = async (name, mime) => {
   const file = await page.evaluate(() => [window.__doc.snapshot.file.name, window.__doc.snapshot.sheets.map((s) => s.name), document.querySelector('.toast')?.textContent ?? null]).catch((e) => 'page: ' + e.message);
   const res = { start: out.trim().split('\n').slice(-1)[0], asked: question, file };
   if (typeof file === 'string') {
-    // the page is gone: restarted process? crashed renderer? killed for memory?
+    // Android ended the app (see 'why Android killed Petak'); the intent started it again.
+    // Attach to the new page and report what the restarted app shows.
+    try {
+      ({ page } = await attach());
+      await page.waitForFunction(() => window.__doc?.snapshot?.sheets?.length > 0, null, { timeout: 60000 });
+      await sleep(4000);
+      const again = await page.$('[data-testid=ask-discard]').catch(() => null);
+      if (again) await again.click(), await sleep(5000);
+      res.afterRestart = await page.evaluate(() => [window.__doc.snapshot.file.name, window.__doc.snapshot.sheets.map((s) => s.name)]);
+    } catch (e) {
+      res.afterRestart = 'could not re-attach: ' + String(e.message).slice(0, 100);
+    }
     const safe = (f) => { try { return String(f()).trim().split('\n').slice(-16).join(' | ').slice(0, 3000); } catch (err) { return 'ERR ' + String(err.message).slice(0, 160); } };
     res.pid = safe(() => sh(`pidof ${PKG}`));
     res.mem = safe(() => sh(`dumpsys meminfo ${PKG} | grep -E "TOTAL PSS|TOTAL:" | head -2`));
