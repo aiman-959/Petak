@@ -1,6 +1,6 @@
 # Petak QA: progress and handover
 
-Last updated: 2026-11-18 · Branch `claude/practical-davinci-plplss` (earlier work on `ccr-8fa3d735-i4cb23`) · App version `1.1.0` (not bumped yet)
+Last updated: 2026-11-18 · Branch `claude/practical-davinci-plplss` (earlier work on `ccr-8fa3d735-i4cb23`) · App version `1.2.0`
 
 This file is the handover for the next work session. The brief being worked on is the six-phase
 QA plan (audit → 12 known problems → acceptance criteria → check every function → performance →
@@ -14,8 +14,8 @@ report and build). `AUDIT.md` holds every bug with its ID; this file says where 
 | 2. Known problems | **Done** except device fps (K-05), measured in Phase 5 on the emulator / headless only. |
 | 3. Acceptance criteria | **Done.** M-01…M-10, L-01, L-02 fixed with tests (`phase3.mjs`, commit `cdfc0c0`). |
 | 4. Every function and feature | **Done.** 476 functions vs LibreOffice / Excel (FUNCTION-CHECK.md, F-01: 11 fixed); 153 menu commands each pressed by a test (FEATURES.md, `commands.mjs`); round trips of every sample file with LibreOffice recalculation (`roundtrip.mjs`); touches for everyday tasks (`taps.mjs`). Found and fixed F-02…F-06. |
-| 5. Performance and stability | In progress: `tests/perf/phase5.mjs` (fling / pinch 10 s per tier, 20-file stress). |
-| 6. Report and build | Not started. |
+| 5. Performance and stability | **Done.** `tests/perf/PHASE5.md` (fling / pinch 10 s per tier on 50 large-font rows and 50k × 20, 20 files in a row: no leak), `tests/perf/RESULTS.md` (before / after). Found and fixed F-07. K-05 stays open until measured on the phone. |
+| 6. Report and build | **Done.** AUDIT.md final, TEST-REPORT.md, README (1.2.0 notes, comparison table, limitations), version 1.2.0 (versionCode 3). APK from CI (see below). |
 
 ## Fixed and proven by tests
 
@@ -50,25 +50,24 @@ report and build). `AUDIT.md` holds every bug with its ID; this file says where 
 | H-07 | Rich text flattened | `richtext.test.ts`, `files.mjs` |
 | M-01 | No fill handle | `cells.mjs`, `fill.test.ts` |
 | — | Quick tap on the next row started editing | `cells.mjs` (double tap needs the same cell) |
+| M-01…M-10, L-01, L-02 | Phase 3 acceptance items | `phase3.mjs`, unit tests |
+| F-01 | 11 functions wrong (INT, CEILING.MATH, FLOOR.MATH, INDEX, VALUE, ISREF, 5 Excel 2007 distributions) | `function-check.test.ts`, `functions.test.ts` |
+| F-02 | Paste threw without clipboard permission; Univer permission banner | `commands.mjs` (runs without the permission) |
+| F-03 | Tap ignored after a row-header menu → long-press menu acted on old cells | `commands.mjs` |
+| F-04 | Sort moved a text column's heading | `taps.mjs`, `phase3.test.ts` |
+| F-05 | Typing into a Text cell converted `0012` / `=1+1` | `commands.mjs` |
+| F-06 | .xls / .ods / csv saved as .xlsx lost default font and column width | `roundtrip.mjs`, `ooxml-roundtrip.test.ts` |
+| F-07 | Univer command stack grew with every tap | `commands.mjs` |
 
 Also new: recent files, clear messages when a file cannot be opened, Format → Font & size with
 your own font files, Android Back button handled by the page.
 
-### Last full test run (commit `cb44b73`)
+### Last full test run (release 1.2.0)
 
 | Suite | Result |
 |---|---|
-| Unit (Vitest, 21 files) | 136 / 136 |
-| `tests/e2e/cells.mjs` | 16 / 16 |
-| `tests/e2e/cells2.mjs` | 12 / 12 |
-| `tests/e2e/draw-touch.mjs` | 24 / 24 |
-| `tests/e2e/part3.mjs` | 18 / 18 |
-| `tests/e2e/fonts.mjs` | 8 / 8 |
-| `tests/e2e/files.mjs` | 12 / 12 |
-| `tests/e2e/render.mjs` | 10 / 10 |
-| `tests/e2e/features.mjs` | 19 / 19 |
-| `tests/e2e/part2.mjs` | 16 / 16 |
-| `tests/e2e/part4.mjs` | 9 / 9 |
+| Unit (Vitest, 25 files) | 158 / 158 |
+| `npm run test:e2e` (14 suites, `tests/e2e/out/summary.json`) | 204 / 204 |
 
 Emulator (CI `device` job, Android 14 WebView): line, rectangle (fit to cells, tool back to
 Select), tap-select, polyline by double tap and Back out of drawing mode all work.
@@ -84,13 +83,13 @@ Device-script lessons: `adb shell uiautomator dump` and Playwright's `device.wai
 not installed) both kill the page connection ("Target page, context or browser has been closed").
 The script therefore opens files only through intents; the system picker is not automated.
 
-## Still open in Phase 2
+## Still open
 
 | ID | Problem | State |
 |---|---|---|
-| K-05 | Scroll / pinch speed | Compositor works; device fps not measured |
-
-`AUDIT.md` statuses now show Fixed / Partly with the test that proves each fix; keep them current as items close.
+| K-05 | Scroll / pinch speed on the phone | Mid-tier slow frames halved on the server; needs `chrome://inspect` on the Snapdragon 8s Gen 3 (TEST-REPORT.md, "What a test server cannot tell") |
+| K-07 | Android ends the app when Play services restarts | Mitigated (session saved 0.4 s after opening); not fixable in the app |
+| L-03 | `.ods` opens without fonts, fills, borders, column widths | Documented; reading ODS styles would be the next step |
 
 ## Drawing tools rework (K-01 to K-04): done
 
@@ -124,12 +123,12 @@ What was built (details in `AUDIT.md` under each ID):
 
 ## Next, in order
 
-1. Check one `device` job log: after a restart on the second file, `afterRestart` should name that file
-2. Write the Phase 2 summary
-6. Phase 3 leftovers: fill handle series, coloured reference highlights, group/outline, PDF export and page setup, workbook tabs, performance profile before/after
-7. Phase 4: workbook covering every function, compared with headless LibreOffice and Microsoft's examples; a test per feature; round-trip tests; tap counts for 10 everyday tasks
-8. Phase 5: 50 large-font rows + 50k × 20 file, fling and pinch for 10 s; 20-file stress test; Low / Mid / High tiers
-9. Phase 6: final `AUDIT.md`, `TEST-REPORT.md`, README comparison table, version bump, release APK, download link
+1. Publish the release: push tag `v1.2.0` from a machine that may push tags (the cloud session cannot);
+   CI then attaches the APKs to a GitHub Release. Until then the APK is the `Petak-apks` artifact of the
+   CI run for the release commit.
+2. Hand checks on the phone (TEST-REPORT.md): frame rate at 120 Hz, thermal behaviour, clipboard with
+   other apps, the system picker and share sheet.
+3. L-03: read ODS cell styles (`content.xml` / `styles.xml`) on import.
 
 ## How to work in this repo
 
@@ -139,12 +138,12 @@ npx tsc -b                      # type check
 npx vitest run                  # unit tests
 npx vite build                  # rebuild dist after every source edit
 npx vite preview --port 4173 &  # e2e suites run against this
-node tests/e2e/cells.mjs
-node tests/e2e/cells2.mjs
-node tests/e2e/draw-touch.mjs
-node tests/e2e/fonts.mjs && node tests/e2e/files.mjs && node tests/e2e/render.mjs
-node tests/e2e/part2.mjs && node tests/e2e/part3.mjs && node tests/e2e/part4.mjs
-BASE_URL=http://localhost:4173/ node tests/e2e/features.mjs   # default base is :5173
+export BASE_URL=http://localhost:4173/
+npm run test:e2e                # every e2e suite (tests/e2e/run-all.mjs); one suite: node tests/e2e/<name>.mjs
+node tests/e2e/feature-matrix.mjs                    # FEATURES.md, after commands.mjs
+node tests/functions/libreoffice.mjs                 # LibreOffice's function results (needs soffice)
+UPDATE_DOCS=1 npx vitest run tests/unit/function-check.test.ts   # FUNCTION-CHECK.md
+node tests/perf/phase5.mjs && node tests/perf/perf50k.mjs        # PHASE5.md, RESULTS.md
 ```
 
 - Touch gestures in tests: `tests/e2e/touch.mjs` (`tap, doubleTap, longPress, drag, fling, pinch`). On the 412 px phone profile use column D
@@ -168,7 +167,7 @@ BASE_URL=http://localhost:4173/ node tests/e2e/features.mjs   # default base is 
   properties card below): taps outside it land on other UI
 - With a drawing tool kept on, the floating selection bar must stay hidden or it covers the next shape's start
 - Never `await` between disposing the old workbook and creating the new one (UI code reads `doc.wb`)
-- "Is this font installed?" must be asked through `local()`; comparing text widths lies (Android answers Arial with Roboto, Linux answers Calibri with Carlito)
+- Never use `local()` fonts or ask Android for fonts: the WebView's connection to Play services' font provider gets the app killed (K-07); the substitutes are bundled and registered under the Excel names
 - The grid canvas is stretched on Low / Mid tiers (`canvasStretch`): measure rendering on the screenshot, not on the canvas
 - Device script: never `adb shell uiautomator dump` or Playwright `device.tap/wait` (both cut the page connection); open files through intents
 - Device tests: taps must land between the drawing tool bar and the chips (sheet y ≈ 62–440)
@@ -179,3 +178,6 @@ BASE_URL=http://localhost:4173/ node tests/e2e/features.mjs   # default base is 
 - Tag pushes are refused from the cloud session, so the APK link is the GitHub Actions artifact unless a release is created by hand
 - Never commit signing keys
 - The repo was renamed to `aiman-959/Petak`; pushes print "This repository moved" and still succeed
+- Univer only pops a command from its execution stack when it succeeds: a command cancelled through `BeforeCommandExecute` must be removed by hand (F-07)
+- Measure memory after a full garbage collection (a heap snapshot); detached canvases and file inputs seen by DevTools are not necessarily leaks
+- Playwright's file chooser keeps the hidden `<input type=file>` alive: DOM node counts in browser tests grow by itself

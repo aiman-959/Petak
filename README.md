@@ -10,7 +10,11 @@ a precision drawing layer with true-scale export, JavaScript macros and a Power-
 License: **GNU GPL v3** (see [LICENSE](LICENSE)). Third-party components: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 > **Download:** the latest APK is on the [Releases page](https://github.com/aiman-959/petak/releases/latest)
-> (`Petak-v1.1.0.apk`, 3.9 MB). See [Install](#install).
+> (`Petak-v1.2.0.apk`, 3.9 MB). See [Install](#install).
+>
+> **1.2.0** is a quality release: every function, menu command and sample file was tested on a phone
+> screen, and 43 problems were fixed. What was tested and how: [TEST-REPORT.md](TEST-REPORT.md); every
+> bug with its fix and test: [AUDIT.md](AUDIT.md).
 
 | Phone | Format tools | Drawing mode | Dark mode |
 |---|---|---|---|
@@ -41,7 +45,7 @@ Screenshots come from the production web build at phone/tablet sizes (`node scri
 | 11 | **Data model** | Relationships between tables, cross-table pivots and SQL queries on **DuckDB-WASM**, downloaded only when first used (6.6 MB, size shown first, removable). |
 | 12 | **Import from URL** | CSV or JSON from a web address as a transform source, with **Refresh**. |
 | 13 | **Drawing and precision tools** | Rectangle, ellipse, line, polyline, arrow, text box, image and dimension line, drawn on the sheet. Snapping (cell edges/corners, cell centres, objects' edges/midpoints/centres, ruler grid, 15° angles, each switchable), rulers in mm / cm / in / px / cells, exact X/Y/W/H/rotation input, live dimensions, smart guides, align and distribute, layers (show/hide/lock), groups, magnifier loupe, column widths / row heights in mm, export to **SVG, DXF and PDF at true scale (1:1)**. |
-| 14 | **Undo / redo and autosave** | Session autosaves to app storage and is restored at next launch. Drawings have their own undo history. |
+| 14 | **Undo / redo and autosave** | One Undo / Redo for cell edits, charts, sparklines, slicers, pivots and drawings. The session autosaves to app storage and is restored at the next launch, also when Android closes the app. |
 | 15 | **Macros** | JavaScript macros in a sandboxed worker. **VBA in `.xlsm` files is preserved on save but not executed.** |
 | 16 | **Data transforms** (Power Query-like) | CSV / xlsx / sheet range / URL sources; filter, remove columns, change type, merge, group by, pivot, unpivot, sort, rename, SQL (with the data model). Refreshable. |
 
@@ -75,7 +79,9 @@ Screenshots come from the production web build at phone/tablet sizes (`node scri
   loading) is spaced out and animations stop. At SEVERE or worse, chunk pauses grow and the High tier leaves 120 Hz until
   the phone cools down.
 * Incremental autosave (changed 2,000-row chunks only), incremental recalculation, chunked loading with progress.
-* 50,000 × 20 performance test: [tests/perf/RESULTS.md](tests/perf/RESULTS.md).
+* Performance tests: fling and pinch on each tier with 50,000 × 20 and large-font files, 20 files in a row
+  ([tests/perf/PHASE5.md](tests/perf/PHASE5.md)); 50,000 × 20 load, edit, autosave, restore and scroll
+  ([tests/perf/RESULTS.md](tests/perf/RESULTS.md)).
 
 ### App size
 Release APK **3.9 MB** (budget 40 MB). Full breakdown per build and module: [SIZE.md](SIZE.md) (`npm run size`).
@@ -89,7 +95,7 @@ Release APK **3.9 MB** (budget 40 MB). Full breakdown per build and module: [SIZ
 ## Install
 
 1. On your phone, open the [latest release](https://github.com/aiman-959/petak/releases/latest) and download
-   `Petak-v1.1.0.apk` (universal). ABI-specific files (`-arm64-v8a`, `-armeabi-v7a`, `-x86_64`) are also there.
+   `Petak-v1.2.0.apk` (universal). ABI-specific files (`-arm64-v8a`, `-armeabi-v7a`, `-x86_64`) are also there.
 2. Open it and allow "Install unknown apps" for your browser or file manager when Android asks.
 3. Launch **Petak** and tap the folder icon to open a spreadsheet.
 
@@ -158,7 +164,7 @@ Without either, `assembleRelease` signs with the debug key so the APK can still 
 
 ### Continuous integration
 `.github/workflows/android.yml` runs the unit tests and builds debug and release APKs (universal + per ABI) on every push,
-with the size report in the job summary. Pushing a tag such as `v1.1.0` creates a GitHub Release with the APKs,
+with the size report in the job summary. Pushing a tag such as `v1.2.0` creates a GitHub Release with the APKs,
 `SHA256SUMS.txt` and `SIZE.md` attached. Add the repository secrets
 `KEYSTORE_BASE64` (`base64 -w0 petak-release.jks`), `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD`
 to get a signed release APK.
@@ -167,13 +173,12 @@ to get a signed release APK.
 
 ```bash
 npm run dev            # http://localhost:5173  (?mobile, ?desktop, ?tier=low|mid|high, ?fresh)
-npm test               # 93 unit tests (formulas, functions, xlsx round trip, drawing geometry/export, governor…)
+npm test               # 158 unit tests, incl. all 476 functions against LibreOffice / Excel results
 npm run build && npm run preview &                  # serve the production build on :4173
 export BASE_URL=http://localhost:4173/
-npm run test:e2e                   # core features (19 checks)
-node tests/e2e/part2.mjs           # comments, validation, sparklines, what-if, slicers, data model, URL import (16)
-node tests/e2e/part3.mjs           # drawing and precision tools (17)
-node tests/e2e/part4.mjs           # shared memory / fallback, governor, Low and Mid tiers (9)
+npm run test:e2e                   # all 14 end-to-end suites on a phone screen (204 steps, about 8 minutes)
+node tests/e2e/commands.mjs        # one suite: every menu command (others: cells, files, draw-touch, roundtrip, taps…)
+node tests/perf/phase5.mjs         # fling / pinch per tier, 20 files in a row -> tests/perf/PHASE5.md
 npm run test:perf                  # 50k x 20 load / scroll / memory test -> tests/perf/RESULTS.md
 npm run size                       # size report -> SIZE.md
 ```
@@ -205,10 +210,13 @@ tests/unit  tests/e2e  tests/perf
 Petak is **not a clone of Microsoft Excel**. It is an independent, original app that opens and saves the same
 file formats and covers everyday spreadsheet work on a phone. It does not copy Excel's look or branding.
 
-| | Petak 1.1 | Desktop Excel |
+| | Petak 1.2 | Desktop Excel |
 |---|---|---|
 | Grid size | 1,048,576 rows × 16,384 columns (A…XFD) | same |
-| Functions | 476 of 514 (92.6 %), list in [FUNCTIONS.md](FUNCTIONS.md) | 514 |
+| Functions | 476 of 514 (92.6 %), list in [FUNCTIONS.md](FUNCTIONS.md); each one checked against Excel's result ([FUNCTION-CHECK.md](FUNCTION-CHECK.md)) | 514 |
+| Files | opens xlsx, xlsm, xls (with formatting), ods (without formatting), csv; saves xlsx, xlsm, csv | more formats |
+| Saving | your edits are written into the original file; everything else in it (VBA, pictures, links, parts Petak does not show) is kept | native |
+| On a phone | touch-first: everyday tasks take 1–5 touches ([TEST-REPORT.md](TEST-REPORT.md#touches-for-everyday-tasks)) | Excel for Android is a separate app |
 | Charts | bar, line, area, pie, doughnut, scatter, combo, histogram, waterfall, sparklines | 20+ types incl. 3D, maps, stock, funnel |
 | Comments / notes, data validation | ✓ (round-trip through xlsx) | ✓ |
 | What-if | Goal Seek, Scenario Manager, Data Tables | same + Solver add-in |
@@ -221,6 +229,9 @@ file formats and covers everyday spreadsheet work on a phone. It does not copy E
 
 ## Known limitations
 * VBA macros are kept but never executed. JavaScript macros cover the automation use case.
+* `.ods` files open without fonts, fills, borders and column widths (values, formulas and merges are read).
+* Scrolling speed on a real phone has not been measured yet; on the test server the High tier keeps 58–60 fps
+  ([TEST-REPORT.md](TEST-REPORT.md#what-a-test-server-cannot-tell)).
 * Charts, pivots, slicers, sparklines, scenarios, drawings and transform queries are stored in a hidden worksheet
   (`__petak_meta`). Other apps keep them but do not show them as their own objects. Comments, notes and data
   validation are written as real xlsx objects.

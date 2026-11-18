@@ -15,7 +15,7 @@ What was tested for this release, how, and what came out. Every bug found has an
 | Sample files: open → edit → save → reopen unchanged, LibreOffice recalculates the saved file to the same values | **8 / 8** (xlsx from Excel and LibreOffice, xlsm, xls, ods, csv) |
 | Twenty files opened in a row | no memory growth, no errors, still edits and computes |
 | Bugs found in this round (Phases 4–5) | 7 (F-01 … F-07), all fixed with a test |
-| Bugs found overall (Phases 1–5) | 7 Critical, 12 Known, 7 High, 10 Medium, 2 Low, F-01 … F-07. All fixed except K-05 (frame rate still to be measured on the phone) and K-07 (mitigated: Android ending the app is outside Petak's control) |
+| Findings overall (Phases 1–5) | 46: 7 Critical, 12 Known, 7 High, 10 Medium, 3 Low, F-01 … F-07. **43 fixed**, each with its test; K-05 partly (frame rate still to be measured on the phone), K-07 mitigated (Android ending the app is outside Petak's control), L-03 open (`.ods` formatting) |
 
 ## How it was tested
 

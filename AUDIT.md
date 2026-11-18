@@ -8,6 +8,11 @@ Status column: **Open** = not fixed yet; **Fixed** = fixed and covered by the na
 (phone-profile Playwright suites in `tests/e2e/`, unit tests in `tests/unit/`). **Partly** = some of it
 fixed, the rest says what remains. This file is updated at the end of every phase.
 
+**Final state for release 1.2.0:** 46 findings (7 Critical, 12 Known, 7 High, 10 Medium, 3 Low, F-01…F-07).
+43 fixed, each with the test that proves it; K-05 partly (frame rate to be measured on the phone);
+K-07 mitigated (Android ends the app when Play services restarts; the session survives); L-03 open
+(`.ods` formatting). Test results: [TEST-REPORT.md](TEST-REPORT.md).
+
 ## How the audit was done
 
 | What | How |
