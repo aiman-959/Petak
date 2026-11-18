@@ -4,7 +4,7 @@ import { FormulaEngine } from '../../src/engine/formulaCore';
 import { ERROR_HELP, errorOf } from '../../src/ui/errorHelp';
 
 vi.mock('../../src/state/doc', () => ({ doc: {} }));
-const { sheetNameError } = await import('../../src/ui/actions');
+const { sheetNameError, hasHeaderRow } = await import('../../src/ui/actions');
 
 describe('circular references (M-06)', () => {
   it('finds the cells of the loop, in order, across sheets', () => {
@@ -68,3 +68,16 @@ describe('theme colours come from the file’s own theme (M-08)', async () => {
     expect(colorOf('<fgColor theme="4"/>', parseTheme(undefined))).toBe('#4472c4'); // no theme part: Office default
   });
 });
+
+describe('sort keeps a header row (found by the Phase 4 tap test)', () => {
+  it('guesses headings like Excel', () => {
+    const list = [['Item', 'Qty'], ['pear', 3], ['apple', 5]];
+    expect(hasHeaderRow(list)).toBe(true); // Qty over numbers
+    expect(hasHeaderRow([['Name'], ['pear'], ['apple']])).toBe(false); // all text, nothing to tell
+    expect(hasHeaderRow([['Name'], ['pear'], ['apple']], true)).toBe(true); // a bold first row
+    expect(hasHeaderRow([[3, 'x'], [1, 'y']])).toBe(false); // a number on top is data
+    expect(hasHeaderRow([['Date', 'Note'], [46000, 'a'], [46001, null]])).toBe(true);
+    expect(hasHeaderRow([['only']])).toBe(false);
+  });
+});
+

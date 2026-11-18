@@ -77,6 +77,11 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | L-01 | Low | CSV: `0012` becomes `12` (Excel does the same; Petak could keep text) | Fixed (`csv.test.ts`, `phase3.mjs`): leading-zero and long digit strings stay text; CSV dates get a date format |
 | L-02 | Low | "Opened file" toast covers the last visible row for 3 s | Fixed (`phase3.mjs`): messages at the top, see-through to taps |
 | F-01 | High | 11 built-in functions give wrong results: INT of negatives, CEILING.MATH / FLOOR.MATH mode, INDEX on a one-row array, VALUE("$1,000"), ISREF, and NORMSDIST, LOGNORMDIST, HYPGEOMDIST, NEGBINOMDIST, BETADIST (#N/A / #NUM!) | Fixed (`function-check.test.ts`, `functions.test.ts`): all 476 functions match Excel, see FUNCTION-CHECK.md |
+| F-02 | High | Without clipboard permission (a WebView may refuse it) every Paste threw, and Univer showed a "Permission Denied — please allow Univer…" banner over the top rows on each copy | Fixed (`commands.mjs` runs without the permission): Paste uses what was copied in Petak, no banner |
+| F-03 | Medium | After a row-header selection and a selection made in code, the next tap on a cell was ignored: the long-press menu then acted on the old cells (Clear formats hit the wrong cell) | Fixed (`commands.mjs`) |
+| F-04 | Medium | Sort kept the header only when the sorted column had numbers: sorting a text column moved its heading into the list | Fixed (`taps.mjs` 8, `phase3.test.ts`): headings guessed like Excel (any column text over numbers, bold first row, frozen row) |
+| F-05 | Medium | Typing into a cell formatted as Text turned `0012` into 12 and `=1+1` into a formula | Fixed (`commands.mjs`) |
+| F-06 | Medium | Saving a workbook that came from .xls / .ods / CSV as .xlsx changed its default font to Calibri 11 and its column widths to 64 px | Fixed (`roundtrip.mjs`, `ooxml-roundtrip.test.ts`) |
 
 Device-only observations (emulator) are in the section "On a real Android WebView" at the end.
 
@@ -323,6 +328,41 @@ documented example. 11 were wrong, all in HyperFormula's own versions:
 **Fixed:** Petak's own versions replace these (`src/engine/excelFunctions.ts`). INDEX past the
 end now gives #REF! as in Excel (was #NUM!). Seven more differ from LibreOffice but match Excel
 (LibreOffice deviates or lacks the function); the table in FUNCTION-CHECK.md says why for each.
+
+### F-02 … F-06 found by pressing every command
+`tests/e2e/commands.mjs` presses each of the 153 menu commands (FEATURES.md lists the test for each),
+`tests/e2e/roundtrip.mjs` opens, saves and reopens every sample file and has LibreOffice recalculate
+what Petak wrote, and `tests/e2e/taps.mjs` does ten everyday tasks with real touches. They found:
+
+- **F-02 Clipboard without permission.** Univer's clipboard `read()` returned the rejected promise
+  instead of catching it, so Paste, Paste values / format / formulas threw; every copy showed a
+  "Permission Denied — please allow Univer to access your clipboard" banner across rows 1–2 that
+  also swallowed taps there. **Fix:** an unreadable clipboard reads as empty (Univer then pastes
+  from its own copy), the banner is off, and Paste says "Nothing to paste" when nothing was copied
+  (`src/univer/setup.ts`, `src/ui/cellActions.ts`). The command suite runs without clipboard
+  permission; `cells2.mjs` keeps covering the system clipboard.
+- **F-03 A tap ignored after a header menu.** Long press a row header (selects the row), then
+  Petak selects a cell in code (`activate()`: Enter after typing moves down this way, as do the
+  cell-address box, Find next and the fill handle): Univer ignored the next tap on a cell. A long press there opened the menu for the old selection, so Clear formats
+  cleared B1 when A1 was pressed. **Fix:** after forwarding a tap the grid checks that the tapped
+  cell (or its merged area) is selected and selects it if not (`src/grid/input.ts`).
+- **F-04 Sort moved the heading.** The header guess looked only at the sorted column: a text column
+  under a text heading ("Item" over "pear, apple") was sorted with its heading. **Fix:** Excel's
+  guess: a heading when any column has text on top and numbers / dates below, when the first row is
+  bold or filled and the next is not, or when the first row is frozen (`hasHeaderRow`).
+- **F-05 Text cells.** A cell formatted as Text (`@`) must keep what is typed; `0012` became 12.
+  **Fix:** `commitInput` stores the typed text as a string for Text cells.
+- **F-06 Default font and widths of non-xlsx workbooks.** A workbook opened from .xls / .ods / CSV
+  and saved as .xlsx got Excel's blank defaults (Calibri 11, 64 px columns) instead of its own
+  (e.g. Arial 10, 88 px). **Fix:** the writer puts the workbook's default font into the new
+  styles part and writes `defaultColWidth` for new sheets (`src/io/ooxml/write.ts`).
+
+Round trips (`roundtrip.mjs`): roster and qm-report from Excel and from LibreOffice, macro.xlsm,
+legacy.xls, an .ods made by LibreOffice, people.csv. For each: Petak's values equal LibreOffice's
+reading of the original; after an edit, save and reopen every cell's value, formula and style,
+merges, frozen panes, column widths and row heights are unchanged; LibreOffice recalculates every
+formula in Petak's file to the same values. One known difference: the CSV identifier `0012` stays
+text in Petak (L-01), LibreOffice makes it 12.
 
 ## On a real Android WebView (emulator, API 34)
 

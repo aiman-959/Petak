@@ -1,6 +1,6 @@
 # Petak QA: progress and handover
 
-Last updated: 2026-11-14 · Branch `claude/practical-davinci-plplss` (earlier work on `ccr-8fa3d735-i4cb23`) · App version `1.1.0` (not bumped yet)
+Last updated: 2026-11-18 · Branch `claude/practical-davinci-plplss` (earlier work on `ccr-8fa3d735-i4cb23`) · App version `1.1.0` (not bumped yet)
 
 This file is the handover for the next work session. The brief being worked on is the six-phase
 QA plan (audit → 12 known problems → acceptance criteria → check every function → performance →
@@ -11,10 +11,10 @@ report and build). `AUDIT.md` holds every bug with its ID; this file says where 
 | Phase | State |
 |---|---|
 | 1. Full audit | **Done.** `AUDIT.md` written (7 Critical, 12 Known, 7 High, Medium/Low, emulator findings). |
-| 2. Known problems | **Nearly done.** All 12 known problems and the Critical / High items have a fix and a test, except device fps (K-05: 28–38 fps on the software-rendered emulator; a real phone is needed). |
-| 3. Acceptance criteria | Partly covered by the Phase 2 work (cell interaction, links, pictures). Rest not started. |
-| 4. Every function and feature | Not started. |
-| 5. Performance and stability | Not started (scroll/pinch compositor is built, device numbers not measured). |
+| 2. Known problems | **Done** except device fps (K-05), measured in Phase 5 on the emulator / headless only. |
+| 3. Acceptance criteria | **Done.** M-01…M-10, L-01, L-02 fixed with tests (`phase3.mjs`, commit `cdfc0c0`). |
+| 4. Every function and feature | **Done.** 476 functions vs LibreOffice / Excel (FUNCTION-CHECK.md, F-01: 11 fixed); 153 menu commands each pressed by a test (FEATURES.md, `commands.mjs`); round trips of every sample file with LibreOffice recalculation (`roundtrip.mjs`); touches for everyday tasks (`taps.mjs`). Found and fixed F-02…F-06. |
+| 5. Performance and stability | In progress: `tests/perf/phase5.mjs` (fling / pinch 10 s per tier, 20-file stress). |
 | 6. Report and build | Not started. |
 
 ## Fixed and proven by tests

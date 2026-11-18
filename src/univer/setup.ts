@@ -24,7 +24,7 @@ import { UniverSheetsPlugin } from '@univerjs/sheets';
 import { UniverSheetsFormulaPlugin } from '@univerjs/sheets-formula';
 import { UniverSheetsNumfmtPlugin } from '@univerjs/sheets-numfmt';
 import { UniverSheetsUIPlugin, UniverSheetsMobileUIPlugin } from '@univerjs/sheets-ui';
-import { UniverUIPlugin, UniverMobileUIPlugin } from '@univerjs/ui';
+import { UniverUIPlugin, UniverMobileUIPlugin, IClipboardInterfaceService } from '@univerjs/ui';
 import { UniverSheetsFilterPlugin } from '@univerjs/sheets-filter';
 import { UniverSheetsFilterUIPlugin, UniverSheetsFilterMobileUIPlugin } from '@univerjs/sheets-filter-ui';
 import { UniverSheetsSortPlugin } from '@univerjs/sheets-sort';
@@ -162,7 +162,28 @@ export function createUniverApp(container: HTMLElement, opts: { mobile?: boolean
   univer.registerPlugin(mobile ? UniverSheetsDataValidationMobileUIPlugin : UniverSheetsDataValidationUIPlugin, { showEditOnDropdown: true });
 
   const api = FUniver.newAPI(univer);
+  quietClipboard(api);
   return { univer, api, mobile };
+}
+
+/**
+ * A WebView may refuse the page access to the system clipboard. Univer then showed a
+ * "Permission Denied — please allow Univer…" banner over the top rows on every copy, and its
+ * paste threw (its read() did not catch the rejected promise). Without access, copy and paste
+ * now work inside Petak quietly: an unreadable clipboard reads as empty, so the paste
+ * commands use what was last copied in Petak.
+ */
+function quietClipboard(api: FUniver) {
+  const inj = (api as unknown as { _injector: { get<X>(t: unknown): X } })._injector;
+  const svc = inj.get<{ read(): Promise<ClipboardItems>; readText(): Promise<string>; _showClipboardAuthenticationNotification?: () => void }>(IClipboardInterfaceService);
+  svc._showClipboardAuthenticationNotification = () => {};
+  svc.read = async () => {
+    try {
+      return await navigator.clipboard.read();
+    } catch {
+      return [];
+    }
+  };
 }
 
 export { UniverInstanceType };

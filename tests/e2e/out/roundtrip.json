@@ -1,0 +1,50 @@
+[
+ {
+  "file": "roster.xlsx",
+  "sheets": 2,
+  "cells": 165,
+  "formulas": 14
+ },
+ {
+  "file": "roster-lo.xlsx",
+  "sheets": 2,
+  "cells": 165,
+  "formulas": 14
+ },
+ {
+  "file": "qm-report.xlsx",
+  "sheets": 2,
+  "cells": 328,
+  "formulas": 19
+ },
+ {
+  "file": "qm-report-lo.xlsx",
+  "sheets": 2,
+  "cells": 328,
+  "formulas": 19
+ },
+ {
+  "file": "macro.xlsm",
+  "sheets": 2,
+  "cells": 328,
+  "formulas": 19
+ },
+ {
+  "file": "legacy.xls",
+  "sheets": 2,
+  "cells": 165,
+  "formulas": 14
+ },
+ {
+  "file": "roster.ods",
+  "sheets": 2,
+  "cells": 141,
+  "formulas": 14
+ },
+ {
+  "file": "people.csv",
+  "sheets": 1,
+  "cells": 20,
+  "formulas": 1
+ }
+]

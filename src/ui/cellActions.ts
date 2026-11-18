@@ -11,13 +11,19 @@ const exec = (id: string, params?: object) => doc.api.executeCommand(id, params)
 const ws = () => doc.wb.getActiveSheet();
 
 // ------------------------------------------------------------------ clipboard
+/** Paste; says so when there is nothing to paste (see quietClipboard in univer/setup.ts). */
+async function pasteWith(id: string): Promise<boolean> {
+  if (await exec(id)) return true;
+  throw new Error('Nothing to paste. Copy cells first.');
+}
+
 export const clip = {
   copy: () => exec('univer.command.copy'),
   cut: () => exec('univer.command.cut'),
-  paste: () => exec('univer.command.paste'),
-  pasteValues: () => exec('sheet.command.paste-value'),
-  pasteFormats: () => exec('sheet.command.paste-format'),
-  pasteFormulas: () => exec('sheet.command.paste-formula'),
+  paste: () => pasteWith('univer.command.paste'),
+  pasteValues: () => pasteWith('sheet.command.paste-value'),
+  pasteFormats: () => pasteWith('sheet.command.paste-format'),
+  pasteFormulas: () => pasteWith('sheet.command.paste-formula'),
 };
 
 // ------------------------------------------------------------------ rows, columns, cells

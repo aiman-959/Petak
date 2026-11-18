@@ -148,4 +148,17 @@ describe('a workbook made in the app', () => {
     // the file stores the prefixed function name
     expect(diffPackages(out.buf, out.buf).after('xl/worksheets/sheet1.xml')).toContain('_xlfn.XLOOKUP(');
   });
+
+  it('keeps the default font and column width of a workbook from .xls / .ods / CSV', () => {
+    const data = {
+      id: 'wb', name: 'Old.xlsx', sheetOrder: ['s1'], styles: {}, defaultStyle: { ff: 'Arial', fs: 10 },
+      sheets: { s1: { id: 's1', name: 'Sheet1', defaultColumnWidth: 88, cellData: { 0: { 0: { v: 'x', t: 1 } } } } },
+    } as never;
+    const out = writeOoxml(data, { cf: [], meta: null, macroEnabled: false });
+    const styles = diffPackages(out.buf, out.buf).after('xl/styles.xml');
+    expect(styles).toMatch(/<fonts count="1"><font><sz val="10"\/><color theme="1"\/><name val="Arial"\/><\/font>/);
+    const back = load(out.buf);
+    expect(back.res.defaultStyle).toMatchObject({ ff: 'Arial', fs: 10 });
+    expect(back.data.sheets[back.data.sheetOrder[0]].defaultColumnWidth).toBe(88);
+  });
 });

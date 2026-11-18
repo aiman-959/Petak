@@ -203,10 +203,15 @@ export const data = {
     const region = dataRegion();
     const rect = region.getRange();
     const ws = doc.wb.getActiveSheet();
-    // keep a header row in place when the first row looks like text headers over numeric data
-    const first = ws.getRange(rect.startRow, col).getValue();
-    const second = ws.getRange(Math.min(rect.startRow + 1, rect.endRow), col).getValue();
-    const hasHeader = typeof first === 'string' && typeof second !== 'string' && rect.endRow > rect.startRow;
+    // keep a header row in place (Excel's guess: see hasHeaderRow)
+    const rows = region.getValues() as unknown[][];
+    const w = rect.endColumn - rect.startColumn + 1;
+    const styleOf = (r: number) => ws.getRange(r, rect.startColumn, 1, w).getCellStyleData() as { bl?: number; bg?: { rgb?: string } } | null;
+    const s0 = styleOf(rect.startRow);
+    const s1 = rect.endRow > rect.startRow ? styleOf(rect.startRow + 1) : null;
+    const styled = !!s0 && ((!!s0.bl && !s1?.bl) || (!!s0.bg?.rgb && s0.bg.rgb !== s1?.bg?.rgb));
+    const frozen = ws.getFrozenRows() > 0 && rect.startRow === ws.getFrozenRows() - 1;
+    const hasHeader = rect.endRow > rect.startRow && (frozen || hasHeaderRow(rows, styled));
     const target = hasHeader ? ws.getRange(rect.startRow + 1, rect.startColumn, rect.endRow - rect.startRow, rect.endColumn - rect.startColumn + 1) : region;
     target.sort({ column: col, ascending: asc });
   },
@@ -230,6 +235,24 @@ export const data = {
   },
   unfreeze: () => doc.wb.getActiveSheet().cancelFreeze(),
 };
+
+/**
+ * Does the first row of a block look like column headings? Excel's guess: yes when it is
+ * formatted differently (bold / filled) or when some column has text on top and only numbers,
+ * dates or TRUE/FALSE below; never when the first row holds a number.
+ */
+export function hasHeaderRow(rows: unknown[][], firstRowStyled = false): boolean {
+  if (rows.length < 2) return false;
+  const [head, ...body] = rows;
+  const filled = (v: unknown) => v !== null && v !== undefined && v !== '';
+  if (!head.some(filled) || head.some((v) => typeof v === 'number')) return false;
+  if (firstRowStyled) return true;
+  return head.some((h, c) => {
+    if (typeof h !== 'string' || !h) return false;
+    const below = body.map((r) => r[c]).filter(filled);
+    return below.length > 0 && below.every((v) => typeof v !== 'string');
+  });
+}
 
 // -------------------------------------------------------------- sheets
 export const sheets = {
@@ -301,6 +324,8 @@ export function commitInput(text: string, target?: FRange) {
   const cell = r.getCellData();
   const p = parseInput(text);
   if (text === '') r.clearContent();
+  // a cell formatted as Text keeps exactly what was typed, as in Excel ("0012", "=A1", "1/2")
+  else if (r.getNumberFormat() === '@') r.setValue({ v: text, t: 1 /* STRING */, ...(cell?.p ? { p: null } : {}) } as never);
   else if ('f' in p) r.setValue((cell?.p ? { f: p.f, p: null } : { f: p.f }) as never);
   else {
     // typing over a rich-text cell replaces its formatted runs too (they would keep showing the old text)

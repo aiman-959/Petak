@@ -503,6 +503,25 @@ export class GridInput {
       return;
     }
     this.forwardTap(x, y);
+    this.ensureCell(hit);
+  }
+
+  /**
+   * Univer ignores the first tap on a cell after a row-header selection was replaced in code
+   * (activate()). The long-press menu then acted on the old selection, e.g. Clear formats on the
+   * wrong cell. If the tapped cell (or its merged area) is not what is selected now, select it.
+   */
+  private ensureCell(hit: GridHit) {
+    if (hit.area !== 'cell' || hit.row === undefined || hit.col === undefined) return;
+    const ws = doc.wb.getActiveSheet();
+    const r = ws.getActiveRange()?.getRange();
+    const merge = ws
+      .getMergedRanges()
+      .map((m) => m.getRange())
+      .find((m) => hit.row! >= m.startRow && hit.row! <= m.endRow && hit.col! >= m.startColumn && hit.col! <= m.endColumn);
+    const want = merge ?? { startRow: hit.row, endRow: hit.row, startColumn: hit.col, endColumn: hit.col };
+    if (r && r.startRow === want.startRow && r.endRow === want.endRow && r.startColumn === want.startColumn && r.endColumn === want.endColumn) return;
+    ws.getRange(want.startRow, want.startColumn, want.endRow - want.startRow + 1, want.endColumn - want.startColumn + 1).activate();
   }
 
   private longPress() {
@@ -515,7 +534,10 @@ export class GridInput {
     else if (hit.area === 'cell') {
       const r = doc.wb.getActiveSheet().getActiveRange()?.getRange();
       const inside = r && hit.row >= r.startRow && hit.row <= r.endRow && hit.col >= r.startColumn && hit.col <= r.endColumn;
-      if (!inside) this.forwardTap(m.x, m.y);
+      if (!inside) {
+        this.forwardTap(m.x, m.y);
+        this.ensureCell(hit);
+      }
     } else this.forwardTap(m.x, m.y);
     try {
       navigator.vibrate?.(12);

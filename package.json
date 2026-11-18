@@ -9,7 +9,7 @@
     "preview": "vite preview --port 4173",
     "lint": "oxlint",
     "test": "vitest run tests/unit",
-    "test:e2e": "node tests/e2e/features.mjs",
+    "test:e2e": "node tests/e2e/run-all.mjs",
     "test:perf": "node tests/perf/perf50k.mjs",
     "licenses": "node scripts/gen-licenses.mjs",
     "android:sync": "npm run build && cap sync android",
