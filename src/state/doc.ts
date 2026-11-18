@@ -159,9 +159,25 @@ class Doc {
       // again. Nothing is shown, but focus goes to it (the keyboard opens), typed text is lost and
       // undo is routed to that editor instead of the sheet. Petak edits in the formula bar, so
       // that editor is never allowed to open on touch devices.
-      const api = this.h.api as unknown as { addEvent(name: string, fn: (e: { id: string; params?: { visible?: boolean }; cancel?: boolean }) => void): unknown; Event: { BeforeCommandExecute: string } };
+      const api = this.h.api as unknown as {
+        addEvent(name: string, fn: (e: { id: string; params?: { visible?: boolean }; cancel?: boolean }) => void): unknown;
+        Event: { BeforeCommandExecute: string };
+        _commandService: { _commandExecutionStack: Array<{ id: string; params?: unknown }> };
+      };
       api.addEvent(api.Event.BeforeCommandExecute, (e) => {
-        if ((e.id === 'sheet.operation.set-cell-edit-visible' || e.id === 'sheet.operation.set-activate-cell-edit') && e.params?.visible !== false) e.cancel = true;
+        if ((e.id === 'sheet.operation.set-cell-edit-visible' || e.id === 'sheet.operation.set-activate-cell-edit') && e.params?.visible !== false) {
+          e.cancel = true;
+          // Univer leaves a cancelled command on its execution stack (it pops only on success). These
+          // two run on every selection change, and each entry holds the sheet's scene: after another
+          // file was opened the old canvases (about 4 MB each time) could never be freed.
+          const stack = api._commandService._commandExecutionStack;
+          for (let i = stack.length - 1; i >= 0; i--) {
+            if (stack[i].id === e.id && stack[i].params === e.params) {
+              stack.splice(i, 1);
+              break;
+            }
+          }
+        }
       });
       const tier = getTier();
       const comp = new Compositor(container, tier.tier === 'high' ? 8 : tier.tier === 'mid' ? 6 : 4);

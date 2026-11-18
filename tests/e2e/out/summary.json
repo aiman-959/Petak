@@ -8,106 +8,10 @@
   "ok": true
  },
  {
-  "suite": "cells2",
-  "passed": 12,
-  "total": 12,
-  "seconds": 28,
-  "failed": [],
-  "ok": true
- },
- {
-  "suite": "draw-touch",
-  "passed": 24,
-  "total": 24,
-  "seconds": 34,
-  "failed": [],
-  "ok": true
- },
- {
-  "suite": "part2",
-  "passed": 16,
-  "total": 16,
-  "seconds": 34,
-  "failed": [],
-  "ok": true
- },
- {
-  "suite": "part3",
-  "passed": 18,
-  "total": 18,
-  "seconds": 11,
-  "failed": [],
-  "ok": true
- },
- {
-  "suite": "part4",
-  "passed": 9,
-  "total": 9,
-  "seconds": 22,
-  "failed": [],
-  "ok": true
- },
- {
-  "suite": "fonts",
-  "passed": 8,
-  "total": 8,
-  "seconds": 7,
-  "failed": [],
-  "ok": true
- },
- {
-  "suite": "files",
-  "passed": 12,
-  "total": 12,
-  "seconds": 22,
-  "failed": [],
-  "ok": true
- },
- {
-  "suite": "render",
-  "passed": 10,
-  "total": 10,
-  "seconds": 21,
-  "failed": [],
-  "ok": true
- },
- {
-  "suite": "features",
-  "passed": 19,
-  "total": 19,
-  "seconds": 83,
-  "failed": [],
-  "ok": true
- },
- {
-  "suite": "phase3",
-  "passed": 10,
-  "total": 10,
-  "seconds": 17,
-  "failed": [],
-  "ok": true
- },
- {
   "suite": "commands",
-  "passed": 27,
-  "total": 27,
-  "seconds": 92,
-  "failed": [],
-  "ok": true
- },
- {
-  "suite": "roundtrip",
-  "passed": 9,
-  "total": 9,
-  "seconds": 38,
-  "failed": [],
-  "ok": true
- },
- {
-  "suite": "taps",
-  "passed": 13,
-  "total": 13,
-  "seconds": 25,
+  "passed": 28,
+  "total": 28,
+  "seconds": 96,
   "failed": [],
   "ok": true
  }

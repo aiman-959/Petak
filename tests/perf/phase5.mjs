@@ -18,6 +18,7 @@ import ExcelJS from 'exceljs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
 import { touch } from '../e2e/touch.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:4173/';
@@ -98,6 +99,7 @@ async function open(page, file, rows) {
     })(),
   ]);
   await chooser.setFiles(file);
+  await chooser.element().dispose();
   await page.waitForFunction(
     ([n, id, rows]) => window.__doc.snapshot.file.name === n && window.__doc.wb.getId() !== id && window.__doc.wb.getActiveSheet().getLastRow() >= rows - 1,
     [path.basename(file), before, rows ?? 0],
@@ -108,6 +110,31 @@ async function open(page, file, rows) {
   return { gridMs: grid, allMs: Date.now() - t0 };
 }
 
+function rendererRssMb() {
+  try {
+    const out = execSync("ps -eo rss,args | grep -E 'type=renderer' | grep -v grep", { encoding: 'utf8' });
+    return Math.round(out.trim().split('\n').reduce((a, l) => a + (+l.trim().split(/\s+/)[0] || 0), 0) / 1024);
+  } catch {
+    return null;
+  }
+}
+/** Canvases alive after a full collection (a heap snapshot collects everything collectable). */
+async function liveCanvases(cdp) {
+  await cdp.send('HeapProfiler.enable');
+  let chunks = [];
+  const h = (e) => chunks.push(e.chunk);
+  cdp.on('HeapProfiler.addHeapSnapshotChunk', h);
+  await cdp.send('HeapProfiler.takeHeapSnapshot', { reportProgress: false });
+  cdp.off('HeapProfiler.addHeapSnapshotChunk', h);
+  const snap = JSON.parse(chunks.join(''));
+  chunks = null;
+  const m = snap.snapshot.meta;
+  const NF = m.node_fields.length;
+  const nName = m.node_fields.indexOf('name');
+  let n = 0;
+  for (let i = 0; i < snap.nodes.length; i += NF) if (snap.strings[snap.nodes[i + nName]].startsWith('<canvas')) n++;
+  return n;
+}
 const metrics = async (cdp) => Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((m) => [m.name, m.value]));
 async function memory(page, cdp) {
   await cdp.send('HeapProfiler.collectGarbage').catch(() => {});
@@ -121,13 +148,13 @@ async function motion(page, cdp, T, kind, seconds) {
   const box = await page.locator('[data-testid=grid]').boundingBox();
   const c = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   await page.evaluate(() => {
-    window.__frames = [];
-    window.__stop = false;
+    const frames = (window.__frames = []);
+    const gen = (window.__gen = (window.__gen ?? 0) + 1);
     let last = performance.now();
     const tick = (t) => {
-      window.__frames.push(t - last);
+      frames.push(t - last);
       last = t;
-      if (!window.__stop) requestAnimationFrame(tick);
+      if (window.__gen === gen) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
   });
@@ -153,7 +180,7 @@ async function motion(page, cdp, T, kind, seconds) {
   }
   const ms = Date.now() - t0;
   const m1 = await metrics(cdp);
-  const frames = (await page.evaluate(() => ((window.__stop = true), window.__frames))).slice(2);
+  const frames = (await page.evaluate(() => ((window.__gen += 1), window.__frames))).slice(2);
   const sorted = [...frames].sort((a, b) => a - b);
   const avg = frames.reduce((a, b) => a + b, 0) / frames.length;
   const per = (k) => +(((m1[k] - m0[k]) * 1000) / (ms / 1000)).toFixed(0); // ms of main thread per second
@@ -215,7 +242,8 @@ for (const [tier, throttle] of TIERS) {
     const load = await open(s.page, file, n);
     await s.page.waitForTimeout(300);
     const mem = await memory(s.page, s.cdp);
-    rows.push({ i: i + 1, file: path.basename(file), openMs: load.allMs, ...mem });
+    const canvases = [0, 9, 19].includes(i) ? await liveCanvases(s.cdp) : undefined;
+    rows.push({ i: i + 1, file: path.basename(file), openMs: load.allMs, ...mem, rssMb: rendererRssMb(), canvases });
     console.log(JSON.stringify(rows[rows.length - 1]));
   }
   const alive = await s.page.evaluate(async () => {
@@ -249,13 +277,21 @@ for (const r of out.motion)
     row(r.tier, r.file, k, c.task, c.script, c.layout, c.style, Math.max(0, c.task - c.script - c.layout - c.style));
   }
 md.push('', '## Twenty files one after another (Mid tier)', '');
-row('#', 'File', 'Open', 'Heap after GC', 'DOM nodes', 'Listeners');
-row('---:', '---', '---:', '---:', '---:', '---:');
-row(0, '(empty workbook)', '', `${out.stress.empty.heapMb} MB`, out.stress.empty.nodes, out.stress.empty.listeners);
-for (const r of out.stress.rows) row(r.i, r.file, `${(r.openMs / 1000).toFixed(2)} s`, `${r.heapMb} MB`, r.nodes, r.listeners);
+row('#', 'File', 'Open', 'JS heap after GC', 'Renderer memory', 'Live canvases', 'DOM nodes', 'Listeners');
+row('---:', '---', '---:', '---:', '---:', '---:', '---:', '---:');
+row(0, '(empty workbook)', '', `${out.stress.empty.heapMb} MB`, '', '', out.stress.empty.nodes, out.stress.empty.listeners);
+for (const r of out.stress.rows) row(r.i, r.file, `${(r.openMs / 1000).toFixed(2)} s`, `${r.heapMb} MB`, r.rssMb ? `${r.rssMb} MB` : '', r.canvases ?? '', r.nodes, r.listeners);
 const a = out.stress.rows[9];
 const b = out.stress.rows[19];
-md.push('', `Same file at #10 and #20: heap ${a.heapMb} → ${b.heapMb} MB, DOM nodes ${a.nodes} → ${b.nodes}, listeners ${a.listeners} → ${b.listeners}. After the 20th file the app still edits and computes: ${out.stress.alive ? 'yes' : '**no**'}. Page errors: ${out.stress.errors.length ? out.stress.errors.join('; ') : 'none'}.`);
+md.push(
+  '',
+  `Same file at #10 and #20: JS heap ${a.heapMb} → ${b.heapMb} MB, renderer ${a.rssMb} → ${b.rssMb} MB, live canvases ${a.canvases} → ${b.canvases}, listeners ${a.listeners} → ${b.listeners}. ` +
+    `After the 20th file the app still edits and computes: ${out.stress.alive ? 'yes' : '**no**'}. Page errors: ${out.stress.errors.length ? out.stress.errors.join('; ') : 'none'}.`,
+  '',
+  'The DOM node count (about +9 per file) and the listener count (+2 per file) grow in this browser test only: a heap',
+  'snapshot shows they are the hidden file-picker `<input>` elements and their change / cancel handlers, held by DevTools',
+  '(the test driver), not by Petak. The Android app uses the system picker and creates no such element.',
+);
 md.push(
   '',
   '## Reading these numbers',

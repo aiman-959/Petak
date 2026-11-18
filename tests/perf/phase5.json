@@ -1,0 +1,494 @@
+{
+ "date": "2026-11-18",
+ "host": "Intel(R) Xeon(R) Processor @ 2.30GHz, 4 cores, 16 GB",
+ "motion": [
+  {
+   "tier": "low",
+   "throttle": 6,
+   "file": "50 large-font rows",
+   "load": {
+    "gridMs": 3043,
+    "allMs": 3053
+   },
+   "fling": {
+    "gestures": 12,
+    "seconds": 10.3,
+    "frames": 439,
+    "fps": 42.6,
+    "p50": 16.7,
+    "p95": 83.3,
+    "worst": 150,
+    "over33": 8.4,
+    "cpu": {
+     "task": 601,
+     "script": 247,
+     "layout": 3,
+     "style": 21
+    }
+   },
+   "pinch": {
+    "gestures": 5,
+    "seconds": 11.3,
+    "frames": 548,
+    "fps": 48.7,
+    "p50": 16.7,
+    "p95": 33.3,
+    "worst": 283,
+    "over33": 2.9,
+    "cpu": {
+     "task": 506,
+     "script": 215,
+     "layout": 2,
+     "style": 20
+    }
+   },
+   "mem": {
+    "heapMb": 22.2,
+    "nodes": 783,
+    "listeners": 520
+   },
+   "zoomAfter": 1,
+   "alive": true,
+   "errors": []
+  },
+  {
+   "tier": "low",
+   "throttle": 6,
+   "file": "50,000 × 20",
+   "load": {
+    "gridMs": 9068,
+    "allMs": 9115
+   },
+   "fling": {
+    "gestures": 11,
+    "seconds": 10.5,
+    "frames": 399,
+    "fps": 38.2,
+    "p50": 16.7,
+    "p95": 100,
+    "worst": 200,
+    "over33": 11.8,
+    "cpu": {
+     "task": 635,
+     "script": 251,
+     "layout": 3,
+     "style": 19
+    }
+   },
+   "pinch": {
+    "gestures": 5,
+    "seconds": 11.6,
+    "frames": 541,
+    "fps": 46.9,
+    "p50": 16.7,
+    "p95": 33.3,
+    "worst": 233,
+    "over33": 3.5,
+    "cpu": {
+     "task": 502,
+     "script": 228,
+     "layout": 2,
+     "style": 18
+    }
+   },
+   "mem": {
+    "heapMb": 72.4,
+    "nodes": 783,
+    "listeners": 520
+   },
+   "zoomAfter": 1,
+   "alive": true,
+   "errors": []
+  },
+  {
+   "tier": "mid",
+   "throttle": 4,
+   "file": "50 large-font rows",
+   "load": {
+    "gridMs": 2385,
+    "allMs": 2403
+   },
+   "fling": {
+    "gestures": 12,
+    "seconds": 10.2,
+    "frames": 436,
+    "fps": 42.7,
+    "p50": 16.7,
+    "p95": 83.3,
+    "worst": 217,
+    "over33": 6.7,
+    "cpu": {
+     "task": 574,
+     "script": 228,
+     "layout": 2,
+     "style": 14
+    }
+   },
+   "pinch": {
+    "gestures": 5,
+    "seconds": 10.9,
+    "frames": 568,
+    "fps": 52.2,
+    "p50": 16.7,
+    "p95": 16.7,
+    "worst": 217,
+    "over33": 1.9,
+    "cpu": {
+     "task": 393,
+     "script": 170,
+     "layout": 1,
+     "style": 11
+    }
+   },
+   "mem": {
+    "heapMb": 22.3,
+    "nodes": 783,
+    "listeners": 520
+   },
+   "zoomAfter": 1,
+   "alive": true,
+   "errors": []
+  },
+  {
+   "tier": "mid",
+   "throttle": 4,
+   "file": "50,000 × 20",
+   "load": {
+    "gridMs": 8248,
+    "allMs": 8291
+   },
+   "fling": {
+    "gestures": 11,
+    "seconds": 10.2,
+    "frames": 382,
+    "fps": 37.6,
+    "p50": 16.7,
+    "p95": 100,
+    "worst": 200,
+    "over33": 10.7,
+    "cpu": {
+     "task": 636,
+     "script": 269,
+     "layout": 3,
+     "style": 15
+    }
+   },
+   "pinch": {
+    "gestures": 5,
+    "seconds": 11.4,
+    "frames": 553,
+    "fps": 48.6,
+    "p50": 16.7,
+    "p95": 33.3,
+    "worst": 200,
+    "over33": 3.1,
+    "cpu": {
+     "task": 484,
+     "script": 209,
+     "layout": 1,
+     "style": 13
+    }
+   },
+   "mem": {
+    "heapMb": 72.4,
+    "nodes": 783,
+    "listeners": 520
+   },
+   "zoomAfter": 1,
+   "alive": true,
+   "errors": []
+  },
+  {
+   "tier": "high",
+   "throttle": 1,
+   "file": "50 large-font rows",
+   "load": {
+    "gridMs": 1272,
+    "allMs": 1273
+   },
+   "fling": {
+    "gestures": 14,
+    "seconds": 10.7,
+    "frames": 617,
+    "fps": 58,
+    "p50": 16.7,
+    "p95": 16.7,
+    "worst": 50,
+    "over33": 0.2,
+    "cpu": {
+     "task": 281,
+     "script": 80,
+     "layout": 1,
+     "style": 5
+    }
+   },
+   "pinch": {
+    "gestures": 5,
+    "seconds": 10.1,
+    "frames": 598,
+    "fps": 59.4,
+    "p50": 16.7,
+    "p95": 16.7,
+    "worst": 50,
+    "over33": 0.2,
+    "cpu": {
+     "task": 155,
+     "script": 58,
+     "layout": 0,
+     "style": 2
+    }
+   },
+   "mem": {
+    "heapMb": 22.4,
+    "nodes": 783,
+    "listeners": 520
+   },
+   "zoomAfter": 1,
+   "alive": true,
+   "errors": []
+  },
+  {
+   "tier": "high",
+   "throttle": 1,
+   "file": "50,000 × 20",
+   "load": {
+    "gridMs": 3862,
+    "allMs": 3872
+   },
+   "fling": {
+    "gestures": 14,
+    "seconds": 10.6,
+    "frames": 629,
+    "fps": 59.6,
+    "p50": 16.7,
+    "p95": 16.7,
+    "worst": 33,
+    "over33": 0,
+    "cpu": {
+     "task": 211,
+     "script": 60,
+     "layout": 0,
+     "style": 3
+    }
+   },
+   "pinch": {
+    "gestures": 5,
+    "seconds": 10,
+    "frames": 597,
+    "fps": 59.7,
+    "p50": 16.7,
+    "p95": 16.7,
+    "worst": 33,
+    "over33": 0,
+    "cpu": {
+     "task": 152,
+     "script": 54,
+     "layout": 0,
+     "style": 2
+    }
+   },
+   "mem": {
+    "heapMb": 72.5,
+    "nodes": 783,
+    "listeners": 520
+   },
+   "zoomAfter": 1,
+   "alive": true,
+   "errors": []
+  }
+ ],
+ "stress": {
+  "empty": {
+   "heapMb": 18.9,
+   "nodes": 767,
+   "listeners": 492
+  },
+  "rows": [
+   {
+    "i": 1,
+    "file": "roster.xlsx",
+    "openMs": 1285,
+    "heapMb": 21.1,
+    "nodes": 783,
+    "listeners": 539,
+    "rssMb": 304,
+    "canvases": 10
+   },
+   {
+    "i": 2,
+    "file": "qm-report.xlsx",
+    "openMs": 1194,
+    "heapMb": 22.1,
+    "nodes": 792,
+    "listeners": 541,
+    "rssMb": 317
+   },
+   {
+    "i": 3,
+    "file": "legacy.xls",
+    "openMs": 1156,
+    "heapMb": 22.3,
+    "nodes": 801,
+    "listeners": 543,
+    "rssMb": 313
+   },
+   {
+    "i": 4,
+    "file": "perf-5000x20.xlsx",
+    "openMs": 1659,
+    "heapMb": 28.1,
+    "nodes": 813,
+    "listeners": 547,
+    "rssMb": 434
+   },
+   {
+    "i": 5,
+    "file": "people.csv",
+    "openMs": 1103,
+    "heapMb": 27.8,
+    "nodes": 823,
+    "listeners": 542,
+    "rssMb": 436
+   },
+   {
+    "i": 6,
+    "file": "macro.xlsm",
+    "openMs": 1161,
+    "heapMb": 23.3,
+    "nodes": 828,
+    "listeners": 549,
+    "rssMb": 431
+   },
+   {
+    "i": 7,
+    "file": "perf-large-fonts.xlsx",
+    "openMs": 1162,
+    "heapMb": 23.2,
+    "nodes": 840,
+    "listeners": 547,
+    "rssMb": 424
+   },
+   {
+    "i": 8,
+    "file": "roster-lo.xlsx",
+    "openMs": 1153,
+    "heapMb": 24.9,
+    "nodes": 846,
+    "listeners": 553,
+    "rssMb": 432
+   },
+   {
+    "i": 9,
+    "file": "perf-20000x20.xlsx",
+    "openMs": 2728,
+    "heapMb": 45.5,
+    "nodes": 858,
+    "listeners": 581,
+    "rssMb": 585
+   },
+   {
+    "i": 10,
+    "file": "qm-report-lo.xlsx",
+    "openMs": 1131,
+    "heapMb": 44.8,
+    "nodes": 864,
+    "listeners": 557,
+    "rssMb": 632,
+    "canvases": 10
+   },
+   {
+    "i": 11,
+    "file": "roster.xlsx",
+    "openMs": 1148,
+    "heapMb": 25,
+    "nodes": 873,
+    "listeners": 559,
+    "rssMb": 539
+   },
+   {
+    "i": 12,
+    "file": "qm-report.xlsx",
+    "openMs": 1183,
+    "heapMb": 25.3,
+    "nodes": 882,
+    "listeners": 561,
+    "rssMb": 433
+   },
+   {
+    "i": 13,
+    "file": "legacy.xls",
+    "openMs": 1164,
+    "heapMb": 25.1,
+    "nodes": 891,
+    "listeners": 563,
+    "rssMb": 425
+   },
+   {
+    "i": 14,
+    "file": "perf-5000x20.xlsx",
+    "openMs": 1889,
+    "heapMb": 30.5,
+    "nodes": 903,
+    "listeners": 567,
+    "rssMb": 537
+   },
+   {
+    "i": 15,
+    "file": "people.csv",
+    "openMs": 1134,
+    "heapMb": 30,
+    "nodes": 913,
+    "listeners": 562,
+    "rssMb": 481
+   },
+   {
+    "i": 16,
+    "file": "macro.xlsm",
+    "openMs": 1142,
+    "heapMb": 25.4,
+    "nodes": 918,
+    "listeners": 569,
+    "rssMb": 473
+   },
+   {
+    "i": 17,
+    "file": "perf-large-fonts.xlsx",
+    "openMs": 1120,
+    "heapMb": 25.2,
+    "nodes": 930,
+    "listeners": 567,
+    "rssMb": 464
+   },
+   {
+    "i": 18,
+    "file": "roster-lo.xlsx",
+    "openMs": 1181,
+    "heapMb": 25.6,
+    "nodes": 936,
+    "listeners": 573,
+    "rssMb": 466
+   },
+   {
+    "i": 19,
+    "file": "perf-20000x20.xlsx",
+    "openMs": 3117,
+    "heapMb": 46.2,
+    "nodes": 948,
+    "listeners": 601,
+    "rssMb": 635
+   },
+   {
+    "i": 20,
+    "file": "qm-report-lo.xlsx",
+    "openMs": 1167,
+    "heapMb": 45.2,
+    "nodes": 954,
+    "listeners": 577,
+    "rssMb": 466,
+    "canvases": 10
+   }
+  ],
+  "alive": true,
+  "errors": []
+ }
+}

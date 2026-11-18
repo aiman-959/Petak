@@ -49,7 +49,7 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | K-02 | High | Polyline: adds a point on every tap, hard to finish | Fixed (`draw-touch.mjs`) |
 | K-03 | High | Line tool does not behave as press, drag, release on the phone | Fixed (`draw-touch.mjs`; emulator run 23 draws a line by press–drag–release) |
 | K-04 | High | Nothing snaps when a shape starts in the middle of a cell | Fixed (`draw.test.ts`, `draw-touch.mjs`) |
-| K-05 | High | Scrolling and pinch zoom are slow and stutter | Partly: GPU compositor works in e2e; device fps not measured yet |
+| K-05 | High | Scrolling and pinch zoom are slow and stutter | Partly: Mid-tier slow frames halved, High tier 58–60 fps in touch flings (`PHASE5.md`); needs a measurement on the phone |
 | K-06 | High | Excel fonts do not display correctly | Fixed (`fonts.mjs`, `fonts.test.ts`); look on a phone still to check |
 | K-07 | High | Opening another file does nothing on the phone | Cause found; mitigated (`files.mjs`). Opening a second file works on the emulator |
 | K-08 | High | Grid lines and borders are broken / faded at zoom ≠ 100 % | Fixed (`render.mjs`) |
@@ -76,12 +76,14 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | M-10 | Medium | Sheet rename uses the browser `prompt()`; no move/reorder of sheets | Fixed (`phase3.mjs`): rename dialog with Excel’s rules, move left / right |
 | L-01 | Low | CSV: `0012` becomes `12` (Excel does the same; Petak could keep text) | Fixed (`csv.test.ts`, `phase3.mjs`): leading-zero and long digit strings stay text; CSV dates get a date format |
 | L-02 | Low | "Opened file" toast covers the last visible row for 3 s | Fixed (`phase3.mjs`): messages at the top, see-through to taps |
+| L-03 | Low | `.ods` files open without fonts, fills, borders or column widths (values, formulas and merges are read) | Open: documented in README; round trip of what is read is tested (`roundtrip.mjs`) |
 | F-01 | High | 11 built-in functions give wrong results: INT of negatives, CEILING.MATH / FLOOR.MATH mode, INDEX on a one-row array, VALUE("$1,000"), ISREF, and NORMSDIST, LOGNORMDIST, HYPGEOMDIST, NEGBINOMDIST, BETADIST (#N/A / #NUM!) | Fixed (`function-check.test.ts`, `functions.test.ts`): all 476 functions match Excel, see FUNCTION-CHECK.md |
 | F-02 | High | Without clipboard permission (a WebView may refuse it) every Paste threw, and Univer showed a "Permission Denied — please allow Univer…" banner over the top rows on each copy | Fixed (`commands.mjs` runs without the permission): Paste uses what was copied in Petak, no banner |
 | F-03 | Medium | After a row-header selection and a selection made in code, the next tap on a cell was ignored: the long-press menu then acted on the old cells (Clear formats hit the wrong cell) | Fixed (`commands.mjs`) |
 | F-04 | Medium | Sort kept the header only when the sorted column had numbers: sorting a text column moved its heading into the list | Fixed (`taps.mjs` 8, `phase3.test.ts`): headings guessed like Excel (any column text over numbers, bold first row, frozen row) |
 | F-05 | Medium | Typing into a cell formatted as Text turned `0012` into 12 and `=1+1` into a formula | Fixed (`commands.mjs`) |
 | F-06 | Medium | Saving a workbook that came from .xls / .ods / CSV as .xlsx changed its default font to Calibri 11 and its column widths to 64 px | Fixed (`roundtrip.mjs`, `ooxml-roundtrip.test.ts`) |
+| F-07 | Low | Univer's command stack grew by about 1.4 entries per tap for the whole session (54 after 40 taps) and kept disposed sheet scenes reachable | Fixed (`commands.mjs`): stays empty; 20 files in a row: no growth in live canvases, heap or renderer memory (`tests/perf/PHASE5.md`) |
 
 Device-only observations (emulator) are in the section "On a real Android WebView" at the end.
 
@@ -363,6 +365,64 @@ reading of the original; after an edit, save and reopen every cell's value, form
 merges, frozen panes, column widths and row heights are unchanged; LibreOffice recalculates every
 formula in Petak's file to the same values. One known difference: the CSV identifier `0012` stays
 text in Petak (L-01), LibreOffice makes it 12.
+
+## Phase 5: performance and stability
+
+Scripts: `tests/perf/phase5.mjs` (results in `tests/perf/PHASE5.md`) and `tests/perf/perf50k.mjs`
+(`tests/perf/RESULTS.md`). Headless Chromium on a 4-core server without a GPU, Pixel 7 screen, touch
+input; the CPU is slowed ÷6 / ÷4 / ÷1 for the Low / Mid / High tiers.
+
+**Fling and pinch, 10 s each** (touch flings with momentum; two-finger pinch in and out):
+
+| Tier | File | Open | Fling fps · frames > 33 ms | Pinch fps · frames > 33 ms |
+|---|---|---:|---:|---:|
+| Low ÷6 | 50 large-font rows | 3.1 s | 42.6 · 8.4 % | 48.7 · 2.9 % |
+| Low ÷6 | 50,000 × 20 | 9.1 s | 38.2 · 11.8 % | 46.9 · 3.5 % |
+| Mid ÷4 | 50 large-font rows | 2.4 s | 42.7 · 6.7 % | 52.2 · 1.9 % |
+| Mid ÷4 | 50,000 × 20 | 8.3 s | 37.6 · 10.7 % | 48.6 · 3.1 % |
+| High | 50 large-font rows | 1.3 s | 58.0 · 0.2 % | 59.4 · 0.2 % |
+| High | 50,000 × 20 | 3.9 s | 59.6 · 0 % | 59.7 · 0 % |
+
+Main-thread profile per second of fling (Mid, 50k rows): 636 ms busy, of which script 269 ms, style
+15 ms, layout 3 ms and 349 ms raster / compositing, which a phone does on the GPU. The long frames
+are the moments a fling reaches an area of the sheet not drawn yet: Univer then draws a full screen
+of cells in one frame.
+
+**50,000 × 20 benchmark, before (13 Nov, 1.1.0 + Phase 2 start) and now** (same script; synthesized
+scroll gestures; the server's speed varies, so both of today's runs are given):
+
+| | High, before | High, now | Mid ÷4, before | Mid ÷4, now (two runs) |
+|---|---:|---:|---:|---:|
+| Open until all formulas computed | 5.26 s | 3.12 s | 8.65 s | 6.64 s · 6.29 s |
+| Edit → dependent formula updated | 61 ms | 40 ms | 203 ms | 255 ms · 239 ms |
+| Incremental autosave after an edit | 178 ms¹ | 25 ms | 1036 ms¹ | 96 ms |
+| Scroll average fps | 59.5 | 55.7 · 56.6 | 19.6 | 20.3 · 29.9 |
+| Scroll frames > 25 ms | 0.4 % | 6.4 % · 5.3 % | 74.7 % | 37.4 % · 31.3 % |
+
+¹ The earlier figure included work that is now done once right after a file opens (the whole session
+is saved 0.4 s after opening, K-07): 239 ms High, 1089 ms Mid. Memory after garbage collection with
+50,000 rows open: JS heap 75 MB, renderer 845 MB (High) / 654 MB (Mid). Without a collection first
+the renderer can show 1.4–1.7 GB of canvas memory that is already released (the earlier 1,041 MB was
+read that way, so it is not comparable).
+
+On the Mid tier the share of slow frames halved. On the High tier the synthesized gestures now show
+some 33 ms frames (5–6 %), where the touch flings above show none; on the phone the GPU does the
+raster. **K-05 stays open until it is measured on the target phone** (TEST-REPORT.md lists the check).
+
+**Twenty files in a row** (Mid tier; the samples, generated 5,000- and 20,000-row files and the
+large-font file, twice through): every open 1.1–3.1 s, no page errors, the app still edits and
+computes after the 20th. The same file at #10 and #20: JS heap 44.8 → 45.2 MB, live canvases 10 → 10,
+listeners 557 → 577. A heap snapshot finds no detached canvases kept by the app; renderer memory
+returns to the same level. The DOM node count (+9 per file) and the listener count (+2 per file) rise
+in the browser test only: they are the hidden file-picker inputs and their change / cancel handlers,
+which DevTools (the test driver) keeps; the app on Android uses the system picker instead.
+
+### F-07 Univer's command stack grew with every tap
+Found while looking for leaks. Petak cancels Univer's in-cell editor commands on phones (K-12), and
+Univer only takes a command off its execution stack when it succeeds: a cancelled one stayed there
+for good, about 1.4 entries per tap (54 after 40 taps), each keeping a reference to the sheet's scene.
+Every later command scanned that stack. **Fix:** the cancelling listener removes the entry
+(`src/state/doc.ts`); `commands.mjs` checks the stack is empty after taps.
 
 ## On a real Android WebView (emulator, API 34)
 

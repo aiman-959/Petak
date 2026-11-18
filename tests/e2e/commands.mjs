@@ -548,6 +548,15 @@ await run('a tap selects the cell even right after a row-header menu and a selec
   assert.equal(await sel(), 'A1', 'Univer ignored this tap before the fix');
 });
 
+await run('taps leave nothing behind on Univer’s command stack (F-07)', async () => {
+  const g = await (await page.$('[data-testid=grid]')).boundingBox();
+  for (let i = 0; i < 12; i++) {
+    await T.tap(g.x + 80 + (i % 3) * 90, g.y + 60 + (i % 6) * 40);
+    await page.waitForTimeout(60);
+  }
+  assert.equal(await S(() => window.__doc.api._commandService._commandExecutionStack.length), 0);
+});
+
 await run('Long press: Format…, Link…, Comment open their panels', async () => {
   await ctx('A1', 'Format…');
   await page.waitForSelector('.bsheet [data-testid=fmt-bold]');
