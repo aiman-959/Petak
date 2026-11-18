@@ -42,12 +42,33 @@ export function parseWithSheetJs(buf: ArrayBuffer, name: string): ParsedSheetJs 
   return { wb, meta: { sheets, hasVba: false, format }, biff };
 }
 
+/**
+ * CSV values that look like numbers but are identifiers (L-01): a leading zero (0012, 0123456789)
+ * or more than 15 digits (card, account and phone numbers lose digits as numbers). Kept as text.
+ */
+export function csvKeepText(w: string): string | null {
+  const t = w.trim();
+  if (/^[+-]?0\d+$/.test(t)) return t;
+  if (/^[+-]?\d{16,}$/.test(t)) return t;
+  return null;
+}
+/** A date number format for CSV text SheetJS read as a date (it gives only the serial number). */
+export function csvDateFormat(w: string): string | null {
+  const t = w.trim();
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(t)) return 'yyyy-mm-dd';
+  if (/^\d{4}-\d{1,2}-\d{1,2}[ T]\d{1,2}:\d{2}(:\d{2})?$/.test(t)) return 'yyyy-mm-dd hh:mm' + (t.split(':').length > 2 ? ':ss' : '');
+  if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(t)) return 'm/d/yyyy';
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(t)) return t.split(':').length > 2 ? 'h:mm:ss' : 'h:mm';
+  return null;
+}
+
 export function* streamSheetJs(p: ParsedSheetJs, chunkRows: number): Generator<LoadChunk, LoadResult> {
   const total = p.meta.sheets.reduce((a, s) => a + s.rows, 0) || 1;
   let done = 0;
   const styles: Record<string, Record<string, unknown>> = {};
   const fmtIds = new Map<string, string>();
   const biff = p.biff ?? null;
+  const isCsv = p.meta.format === 'csv';
   const mdw = maxDigitWidth(biff?.defaultFont ?? {});
   /** style id for a cell: its .xls look (XF) combined with its number format */
   const styleId = (xf: number | undefined, z: string | undefined): string | undefined => {
@@ -103,7 +124,12 @@ export function* streamSheetJs(p: ParsedSheetJs, chunkRows: number): Generator<L
           if (!cell) continue;
           const cd: ICellData = {};
           if (cell.f) cd.f = '=' + cell.f;
-          if (cell.t === 'n') {
+          const csvText = isCsv && cell.t === 'n' && typeof cell.w === 'string' ? csvKeepText(cell.w) : null;
+          const csvDate = isCsv && cell.t === 'n' && typeof cell.w === 'string' && !csvText ? csvDateFormat(cell.w) : null;
+          if (csvText !== null) {
+            cd.v = csvText;
+            cd.t = 1;
+          } else if (cell.t === 'n') {
             cd.v = cell.v as number;
             cd.t = 2;
           } else if (cell.t === 'b') {
@@ -119,7 +145,7 @@ export function* streamSheetJs(p: ParsedSheetJs, chunkRows: number): Generator<L
             cd.v = String(cell.v);
             cd.t = 1;
           }
-          const z = cell.z && cell.z !== 'General' && cell.t === 'n' ? String(cell.z) : undefined;
+          const z = csvText !== null ? undefined : csvDate ?? (cell.z && cell.z !== 'General' && cell.t === 'n' ? String(cell.z) : undefined);
           const sid = styleId(looks?.get(c), z);
           if (sid) cd.s = sid;
           if (cd.v !== undefined || cd.f || cd.s) out[c] = cd;

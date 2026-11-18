@@ -66,16 +66,16 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | H-07 | High | Rich text in a cell loses its formatting on load (flattened) | Fixed (`richtext.test.ts`, `files.mjs`) |
 | M-01 | Medium | No fill handle (copy / series by dragging) | Fixed (`cells.mjs`, `fill.test.ts`): drag grip under the selection |
 | M-02 | Medium | No status bar (Sum / Average / Count of the selection) | Fixed (`cells2.mjs`) |
-| M-03 | Medium | Formula entry: no argument hints, no coloured references | Partly: argument hints done; coloured references open |
+| M-03 | Medium | Formula entry: no argument hints, no coloured references | Fixed (`phase3.mjs`, `formulaRefs.test.ts`): argument hints, coloured references in the field and on the grid |
 | M-04 | Medium | Number cells do not get a numeric keyboard; Tab does not move right | Fixed (`cells.mjs`) |
-| M-05 | Medium | Charts, sparklines, slicers, drawings are not on the main undo stack | Open |
-| M-06 | Medium | Circular reference shows `#CYCLE!` without explanation | Open |
-| M-07 | Medium | CSV export writes only the active sheet and does not say so | Open |
-| M-08 | Medium | Theme colours are read with the default Office theme, wrong for other themes | Open |
-| M-09 | Medium | No recent files list, no print / PDF export of a sheet | Open |
-| M-10 | Medium | Sheet rename uses the browser `prompt()`; no move/reorder of sheets | Open |
-| L-01 | Low | CSV: `0012` becomes `12` (Excel does the same; Petak could keep text) | Open |
-| L-02 | Low | "Opened file" toast covers the last visible row for 3 s | Open |
+| M-05 | Medium | Charts, sparklines, slicers, drawings are not on the main undo stack | Fixed (`phase3.mjs`): charts, sparklines, slicers, pivots, drawings on the main Undo / Redo |
+| M-06 | Medium | Circular reference shows `#CYCLE!` without explanation | Fixed (`phase3.mjs`, `phase3.test.ts`): every error value explained; #CYCLE! names the loop |
+| M-07 | Medium | CSV export writes only the active sheet and does not say so | Fixed (`phase3.mjs`): the message names the sheet written and the sheets left out |
+| M-08 | Medium | Theme colours are read with the default Office theme, wrong for other themes | Fixed (`phase3.test.ts`): colours come from the file’s own theme |
+| M-09 | Medium | No recent files list, no print / PDF export of a sheet | Fixed: recent files (`files.mjs`); Print / PDF of a sheet (`phase3.mjs`, `sheetPdf.test.ts`) |
+| M-10 | Medium | Sheet rename uses the browser `prompt()`; no move/reorder of sheets | Fixed (`phase3.mjs`): rename dialog with Excel’s rules, move left / right |
+| L-01 | Low | CSV: `0012` becomes `12` (Excel does the same; Petak could keep text) | Fixed (`csv.test.ts`, `phase3.mjs`): leading-zero and long digit strings stay text; CSV dates get a date format |
+| L-02 | Low | "Opened file" toast covers the last visible row for 3 s | Fixed (`phase3.mjs`): messages at the top, see-through to taps |
 
 Device-only observations (emulator) are in the section "On a real Android WebView" at the end.
 
@@ -293,6 +293,9 @@ limited; never save in place.
 
 ## Medium / Low
 M-01…M-10 and L-01, L-02 are listed in the summary; each maps to a Phase 3 acceptance item.
+All are fixed; the proof for each is in the summary table and in `tests/e2e/phase3.mjs`. Also added in
+Phase 3: row / column grouping (Data → Group / Ungroup / Collapse / Expand, undoable, saved as Excel
+outline levels) and a long-press on a sheet tab that no longer closes its own menu.
 
 ## On a real Android WebView (emulator, API 34)
 

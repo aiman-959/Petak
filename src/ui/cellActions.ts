@@ -21,6 +21,85 @@ export const clip = {
 };
 
 // ------------------------------------------------------------------ rows, columns, cells
+// ------------------------------------------------------------------ group / outline
+/** Rows (or, when whole columns are selected, columns) the grouping commands act on. */
+function outlineTarget(): { axis: 'row' | 'col'; from: number; to: number } {
+  const r = activeRect() as { startRow: number; endRow: number; startColumn: number; endColumn: number; rangeType?: number };
+  const wholeCols = r.rangeType === 2 || (r.startRow === 0 && r.endRow >= ws().getMaxRows() - 1);
+  return wholeCols ? { axis: 'col', from: r.startColumn, to: r.endColumn } : { axis: 'row', from: r.startRow, to: r.endRow };
+}
+const levelOf = (axis: 'row' | 'col', i: number) => {
+  const c = (axis === 'row' ? ws().getRowCustomMetadata(i) : ws().getColumnCustomMetadata(i)) as { ol?: number } | undefined;
+  return c?.ol ?? 0;
+};
+/** New outline data for rows / columns, written with one undoable command. */
+function setLevels(axis: 'row' | 'col', changes: Array<[number, number, Record<string, unknown>?]>) {
+  const data: Record<number, { custom: Record<string, unknown> }> = {};
+  for (const [i, ol, extra] of changes) {
+    const cur = ((axis === 'row' ? ws().getRowCustomMetadata(i) : ws().getColumnCustomMetadata(i)) ?? {}) as Record<string, unknown>;
+    const next: Record<string, unknown> = { ...cur, ...(extra ?? {}), ol: ol || undefined };
+    for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k];
+    data[i] = { custom: next };
+  }
+  const base = { unitId: doc.wb.getId(), subUnitId: ws().getSheetId() };
+  return axis === 'row' ? exec('sheet.command.set-row-data', { ...base, rowData: data }) : exec('sheet.command.set-col-data', { ...base, columnData: data });
+}
+const setLevel = (axis: 'row' | 'col', i: number, ol: number, extra: Record<string, unknown> = {}) => setLevels(axis, [[i, ol, extra]]);
+/**
+ * The group the selection belongs to: the run of rows / columns around it whose outline level is
+ * at least the selection's. When the selection is the summary row just below (right of) a group,
+ * that group.
+ */
+export function groupAround(levels: (i: number) => number, at: number, max: number): { from: number; to: number; level: number } | null {
+  let i = at;
+  if (!levels(i) && i > 0 && levels(i - 1)) i -= 1;
+  const level = levels(i);
+  if (!level) return null;
+  let from = i;
+  let to = i;
+  while (from > 0 && levels(from - 1) >= level) from--;
+  while (to < max && levels(to + 1) >= level) to++;
+  return { from, to, level };
+}
+export const outline = {
+  async group() {
+    const t = outlineTarget();
+    const ch: Array<[number, number]> = [];
+    for (let i = t.from; i <= t.to; i++) ch.push([i, Math.min(7, levelOf(t.axis, i) + 1)]);
+    await setLevels(t.axis, ch);
+    doc.markDirtyPublic();
+  },
+  async ungroup() {
+    const t = outlineTarget();
+    const ch: Array<[number, number]> = [];
+    for (let i = t.from; i <= t.to; i++) ch.push([i, Math.max(0, levelOf(t.axis, i) - 1)]);
+    await setLevels(t.axis, ch);
+    doc.markDirtyPublic();
+  },
+  async collapse() {
+    const t = outlineTarget();
+    const max = t.axis === 'row' ? ws().getMaxRows() - 1 : ws().getMaxColumns() - 1;
+    const g = groupAround((i) => levelOf(t.axis, i), t.from, max);
+    if (!g) throw new Error(`The selection is not in a group. Group ${t.axis === 'row' ? 'rows' : 'columns'} first.`);
+    if (t.axis === 'row') ws().hideRows(g.from, g.to - g.from + 1);
+    else ws().hideColumns(g.from, g.to - g.from + 1);
+    // Excel marks the summary row / column after a collapsed group
+    if (g.to + 1 <= max) await setLevel(t.axis, g.to + 1, levelOf(t.axis, g.to + 1), { cz: 1 });
+    ws().getRange(t.axis === 'row' ? g.to + 1 : 0, t.axis === 'row' ? 0 : g.to + 1).activate();
+    doc.markDirtyPublic();
+  },
+  async expand() {
+    const t = outlineTarget();
+    const max = t.axis === 'row' ? ws().getMaxRows() - 1 : ws().getMaxColumns() - 1;
+    const g = groupAround((i) => levelOf(t.axis, i), t.from, max);
+    if (!g) throw new Error('The selection is not next to a collapsed group.');
+    if (t.axis === 'row') ws().showRows(g.from, g.to - g.from + 1);
+    else ws().showColumns(g.from, g.to - g.from + 1);
+    if (g.to + 1 <= max) await setLevel(t.axis, g.to + 1, levelOf(t.axis, g.to + 1), { cz: undefined });
+    doc.markDirtyPublic();
+  },
+};
+
 export const structure = {
   insertCellsDown: () => exec('sheet.command.insert-range-move-down'),
   insertCellsRight: () => exec('sheet.command.insert-range-move-right'),

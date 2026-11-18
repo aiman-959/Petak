@@ -95,7 +95,8 @@ export const draw = {
       h.redo = [];
     }
     next = { ...next, shapes: refreshAngles(next.shapes) };
-    doc.updateMeta((m) => (m.drawings = { ...(m.drawings ?? {}), [id]: next }));
+    // drawing mode keeps its own history; its undo / redo must not be recorded again on the workbook's
+    doc.updateMeta((m) => (m.drawings = { ...(m.drawings ?? {}), [id]: next }), { undoable: record });
     // drop selected ids that no longer exist
     const ids = new Set(next.shapes.map((s) => s.id));
     set({ selected: st.selected.filter((s) => ids.has(s)), layerId: next.layers.some((l) => l.id === st.layerId) ? st.layerId : next.layers[0].id });

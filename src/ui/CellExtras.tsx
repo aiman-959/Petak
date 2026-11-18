@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import {
   Scissors, Copy, ClipboardPaste, ClipboardType, Paintbrush, Sigma, Rows3, Columns3, Trash2, Eraser, Link2, Link2Off, ExternalLink, MessageSquare, EyeOff, Eye,
-  ArrowDownToLine, ArrowRightToLine, Pencil, ImageOff, Maximize2, MoveDown, MoveRight,
+  ArrowDownToLine, ArrowRightToLine, Pencil, ImageOff, Maximize2, MoveDown, MoveRight, CircleHelp,
 } from 'lucide-react';
 import { Dialog, Sheet, Tool } from './Chrome';
 import { guard, ui, useUi } from './store';
@@ -15,6 +15,8 @@ import { doc } from '../state/doc';
 import { activeCellHasLink, clip, fmtStat, linkOfActiveCell, openLink, removeLink, selectionStats, setLink, structure, type SelStats } from './cellActions';
 import { edit as editActions } from './actions';
 import { pictures } from '../pictures/pictures';
+import { ERROR_HELP, errorOf } from './errorHelp';
+import { colToLetters } from '../io/a1';
 
 /** Sum · Average · Count of the selection, and the link button. Sits at the bottom of the grid. */
 export function SelectionBar() {
@@ -49,9 +51,21 @@ export function SelectionBar() {
     }, 60);
     return () => clearTimeout(t);
   }, [sel.ref, sel.raw, tick]);
-  if (editing || (!stats && !hasLink)) return null;
+  const cellErr = (() => {
+    try {
+      return errorOf(doc.wb.getActiveSheet().getActiveCell()?.getValue());
+    } catch {
+      return null;
+    }
+  })();
+  if (editing || (!stats && !hasLink && !cellErr)) return null;
   return (
     <div className="selbar" data-testid="selection-bar">
+      {cellErr && (
+        <button className="link-pill error-pill" data-testid="error-help" onClick={() => guard(() => explainError(cellErr))}>
+          <CircleHelp size={16} /> {cellErr} {ERROR_HELP[cellErr].title}
+        </button>
+      )}
       {hasLink && (
         <button
           className="link-pill"
@@ -85,6 +99,23 @@ export function SelectionBar() {
       )}
     </div>
   );
+}
+
+/** Explain the error in the active cell; for a circular reference, name the cells in the loop. */
+async function explainError(code: string) {
+  const h = ERROR_HELP[code];
+  let text = h.text;
+  if (code === '#CYCLE!') {
+    const ws = doc.wb.getActiveSheet();
+    const cell = ws.getActiveRange()!.getRange();
+    const loop = await doc.bridge.cyclePath(ws.getSheetId(), cell.startRow, cell.startColumn).catch(() => []);
+    if (loop.length) {
+      const name = (sid: string) => doc.wb.getSheetBySheetId(sid)?.getSheetName() ?? '';
+      const ref = ([sid, r, c]: [string, number, number]) => (sid === ws.getSheetId() ? '' : `${name(sid)}!`) + colToLetters(c) + (r + 1);
+      text += `\n\nThe loop: ${[...loop, loop[0]].map(ref).join(' → ')}`;
+    }
+  }
+  await ui.ask(`${code} — ${h.title}\n\n${text}`, [{ id: 'ok', label: 'OK', kind: 'primary' }]);
 }
 
 /** Long-press menu (cells, headers, pictures). */

@@ -3,7 +3,7 @@
  * worker and app metadata. UI components talk to this singleton.
  */
 import type { IWorkbookData, ICellData, IWorksheetData } from '@univerjs/core';
-import { ICommandService, IResourceManagerService, IUndoRedoService, IUniverInstanceService, UniverInstanceType } from '@univerjs/core';
+import { CommandType, ICommandService, IResourceManagerService, IUndoRedoService, IUniverInstanceService, UniverInstanceType } from '@univerjs/core';
 import { RES_THREADS } from '../io/review';
 import { setSparklines } from '../features/sparklines';
 import { setDrawings, setImageListener } from '../draw/render';
@@ -67,6 +67,8 @@ export interface Origin {
   tables: Array<TableInfo & { sheetId: string }>;
   date1904: boolean;
 }
+/** undoable change of charts, sparklines, slicers, drawings… (see updateMeta) */
+const META_MUTATION = 'petak.mutation.set-meta';
 const ORIGIN_KEY = 'session:origin';
 const MEDIA_KEY = 'session:media';
 
@@ -202,6 +204,23 @@ class Doc {
     });
     this.repaintSparklines = repaint;
     const cmd = this.injector<ICommandService>(ICommandService);
+    // charts, sparklines, slicers, pivots, drawings… live in `meta`; their changes are undone with
+    // the workbook's own Undo, in order with cell edits (M-05)
+    cmd.registerCommand({
+      id: META_MUTATION,
+      type: CommandType.MUTATION,
+      handler: (_accessor: unknown, params?: { unitId: string; parts: Record<string, string | null> }) => {
+        if (!params || params.unitId !== this.h.api.getActiveWorkbook()?.getId()) return false;
+        for (const [k, v] of Object.entries(params.parts)) {
+          if (v === null) delete (this.meta as unknown as Record<string, unknown>)[k];
+          else (this.meta as unknown as Record<string, unknown>)[k] = JSON.parse(v);
+        }
+        this.syncMetaRenderers();
+        this.markDirty();
+        this.emit({});
+        return true;
+      },
+    } as never);
     cmd.onCommandExecuted((info, options) => {
       if (this.loading || this.gesturing) return;
       const opt = options as { fromFormulaEngine?: boolean; onlyLocal?: boolean; autoGrow?: boolean } | undefined;
@@ -693,8 +712,39 @@ class Doc {
     }
   }
 
-  updateMeta(fn: (m: AppMeta) => void) {
+  /**
+   * Change charts, sparklines, slicers, drawings… The change goes on the workbook's undo
+   * history (only the parts that changed are kept), unless `undoable` is false (drawing mode's
+   * own undo / redo, which must not record itself again).
+   */
+  updateMeta(fn: (m: AppMeta) => void, opts: { undoable?: boolean } = {}) {
+    const m = this.meta as unknown as Record<string, unknown>;
+    const before = new Map(Object.keys(m).map((k) => [k, JSON.stringify(m[k])]));
     fn(this.meta);
+    if (opts.undoable !== false) {
+      const undo: Record<string, string | null> = {};
+      const redo: Record<string, string | null> = {};
+      for (const k of new Set([...before.keys(), ...Object.keys(m)])) {
+        const b = before.get(k) ?? null;
+        const a = k in m && m[k] !== undefined ? JSON.stringify(m[k]) : null;
+        if (a !== b) {
+          undo[k] = b;
+          redo[k] = a;
+        }
+      }
+      if (Object.keys(redo).length) {
+        try {
+          const unitID = this.wb.getId();
+          this.injector<{ pushUndoRedo(item: unknown): void }>(IUndoRedoService).pushUndoRedo({
+            unitID,
+            undoMutations: [{ id: META_MUTATION, params: { unitId: unitID, parts: undo } }],
+            redoMutations: [{ id: META_MUTATION, params: { unitId: unitID, parts: redo } }],
+          });
+        } catch (e) {
+          console.warn('meta change not on the undo history', e);
+        }
+      }
+    }
     this.syncMetaRenderers();
     this.markDirty();
     this.emit({});
@@ -716,6 +766,13 @@ class Doc {
       /* no workbook */
     }
   }
+  /** row / column metadata changes (outline levels) are not cell edits: mark the file as changed */
+  markDirtyPublic() {
+    // row / column metadata is written with the whole sheet in the saved session
+    this.saver.markAll([this.wb.getActiveSheet().getSheetId()]);
+    this.markDirty();
+    this.scheduleAutosave();
+  }
   undo() {
     this.focusWorkbook();
     return this.h.api.undo();
@@ -725,6 +782,7 @@ class Doc {
     return this.h.api.redo();
   }
 }
+
 
 export const doc = new Doc();
 (globalThis as unknown as { __doc: Doc }).__doc = doc; // handy for e2e tests and debugging

@@ -110,7 +110,15 @@ export const fileActions = {
       await openFile(f);
     }),
   save: () => guard(() => doc.save().then(remember), 'Saved'),
-  saveAs: (fmt: FileFormat) => guard(() => doc.saveAs(fmt).then(remember), 'Saved'),
+  saveAs: (fmt: FileFormat) =>
+    guard(async () => {
+      // a CSV file holds one sheet: say which one, and that the others are not in it (M-07)
+      const sheet = doc.wb.getActiveSheet().getSheetName();
+      const others = doc.wb.getSheets().filter((s) => !s.isSheetHidden()).length - 1;
+      await doc.saveAs(fmt);
+      remember();
+      ui.toast(fmt === 'csv' && others > 0 ? `Saved “${sheet}” as CSV. A CSV file holds one sheet: the other ${others} ${others === 1 ? 'sheet is' : 'sheets are'} not in it.` : 'Saved');
+    }),
   share: () =>
     guard(async () => {
       const fmt = doc.snapshot.file.format === 'xlsm' ? 'xlsm' : 'xlsx';
@@ -237,9 +245,20 @@ export const sheets = {
   rename: async (id: string) => {
     const s = doc.wb.getSheetBySheetId(id);
     if (!s) return;
-    const name = prompt('Sheet name', s.getSheetName());
-    if (name && name.trim()) guard(() => s.setName(name.trim().slice(0, 31)));
+    const others = doc.wb.getSheets().filter((x) => x.getSheetId() !== id).map((x) => x.getSheetName());
+    const name = await ui.promptText('Rename sheet', 'Sheet name', s.getSheetName(), (v) => sheetNameError(v, others));
+    if (name !== null && name.trim() !== s.getSheetName()) guard(() => s.setName(name.trim()));
   },
+  /** Move a sheet one place left (-1) or right (+1) among the tabs. */
+  move: (id: string, by: -1 | 1) =>
+    guard(() => {
+      const wb = doc.wb;
+      const list = wb.getSheets();
+      const i = list.findIndex((x) => x.getSheetId() === id);
+      const j = i + by;
+      if (i < 0 || j < 0 || j >= list.length) return;
+      wb.moveSheet(list[i], j);
+    }),
   remove: async (id: string) => {
     if (doc.wb.getNumSheets() <= 1) return ui.toast('A workbook needs at least one sheet');
     if (await ui.confirm('Delete this sheet? You can undo.')) doc.wb.deleteSheet(id);
@@ -249,6 +268,19 @@ export const sheets = {
     if (s) doc.wb.duplicateSheet(s);
   },
 };
+
+/** Excel's rules for a sheet name; null when the name is fine. Pure: unit-tested. */
+export function sheetNameError(raw: string, others: string[]): string | null {
+  const v = raw.trim();
+  if (!v) return 'A sheet name cannot be empty.';
+  if (v.length > 31) return `A sheet name can have at most 31 characters (this one has ${v.length}).`;
+  const bad = /[:\\/?*[\]]/.exec(v);
+  if (bad) return `A sheet name cannot contain “${bad[0]}”. Not allowed: : \\ / ? * [ ]`;
+  if (v.startsWith("'") || v.endsWith("'")) return 'A sheet name cannot begin or end with an apostrophe.';
+  if (v.toLowerCase() === 'history') return '“History” is reserved by Excel.';
+  if (others.some((o) => o.toLowerCase() === v.toLowerCase())) return `There is already a sheet called “${v}”.`;
+  return null;
+}
 
 /** Parse what the user typed in the formula bar into a cell value. */
 export function parseInput(text: string): { v: string | number | boolean; pattern?: string } | { f: string } {

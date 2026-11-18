@@ -18,6 +18,7 @@ const api = {
   setCells: (id: string, cells: never) => engine.setCells(id, cells),
   replaceSheet: (id: string, rows: never) => engine.replaceSheet(id, rows),
   evaluate: (id: string, f: string) => engine.evaluate(id, f),
+  cyclePath: (id: string, r: number, c: number) => engine.cyclePath(id, r, c),
   evaluateMany: (id: string, f: string[]) => engine.evaluateMany(id, f),
   goalSeek: (id: string, target: [number, number], goal: number, changing: [number, number]) => engine.goalSeek(id, target, goal, changing),
   whatIf: (id: string, trials: never, reads: never) => engine.whatIf(id, trials, reads),

@@ -383,6 +383,47 @@ export class FormulaEngine {
     return out;
   }
 
+  /**
+   * The cells of a circular reference through (row, col), in order, starting there:
+   * [[sheetId, row, col], ...]. Empty when the cell is not in a loop (M-06).
+   */
+  cyclePath(sheetId: string, row: number, col: number): Array<[string, number, number]> {
+    const start = { sheet: this.sheet(sheetId), row, col };
+    const key = (a: { sheet: number; row: number; col: number }) => `${a.sheet}:${a.row}:${a.col}`;
+    const target = key(start);
+    const seen = new Set<string>();
+    let budget = 20000;
+    const walk = (at: { sheet: number; row: number; col: number }, path: Array<{ sheet: number; row: number; col: number }>): typeof path | null => {
+      if (--budget < 0) return null;
+      let pre: unknown[] = [];
+      try {
+        pre = this.hf.getCellPrecedents(at) as unknown[];
+      } catch {
+        return null;
+      }
+      for (const p of pre) {
+        // a precedent is a cell or a range; walk each cell of small ranges
+        const cells: Array<{ sheet: number; row: number; col: number }> = [];
+        const q = p as { sheet?: number; row?: number; col?: number; start?: { sheet: number; row: number; col: number }; end?: { row: number; col: number } };
+        if (q.start && q.end) {
+          for (let r = q.start.row; r <= q.end.row && cells.length < 2000; r++) for (let c = q.start.col; c <= q.end.col && cells.length < 2000; c++) cells.push({ sheet: q.start.sheet, row: r, col: c });
+        } else if (q.sheet !== undefined && q.row !== undefined && q.col !== undefined) cells.push({ sheet: q.sheet, row: q.row, col: q.col });
+        for (const c of cells) {
+          const k = key(c);
+          if (k === target) return path;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          const found = walk(c, [...path, c]);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    const loop = walk(start, []);
+    if (!loop) return [];
+    return [start, ...loop].map((c) => [this.hfToId.get(c.sheet) ?? sheetId, c.row, c.col]);
+  }
+
   /** Evaluate an ad-hoc formula (e.g. from a macro or the formula bar preview). */
   evaluate(sheetId: string, formula: string): CellOut['v'] {
     const v = this.hf.calculateFormula(normalizeFormula(formula), this.sheet(sheetId));

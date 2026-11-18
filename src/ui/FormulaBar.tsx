@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Check, X } from 'lucide-react';
 import { useSelection } from './hooks';
 import { commitValidated } from './actions';
@@ -8,6 +8,7 @@ import { doc } from '../state/doc';
 import { parseRange } from '../io/a1';
 import { guard } from './store';
 import { FUNCTION_HINTS } from '../engine/functionHints';
+import { formulaRefs } from './formulaRefs';
 
 let fnNames: string[] = [];
 
@@ -110,6 +111,25 @@ export function FormulaBar() {
     });
   };
 
+  // coloured references (M-03): a mirror under the input shows the text with each reference in its colour
+  const refs = useMemo(() => (ed.editing ? formulaRefs(text) : []), [ed.editing, text]);
+  const mirror = useRef<HTMLDivElement>(null);
+  const syncMirror = () => {
+    if (mirror.current && input.current) mirror.current.scrollLeft = input.current.scrollLeft;
+  };
+  useLayoutEffect(syncMirror);
+  const mirrored = refs.length > 0;
+  const pieces: Array<{ t: string; color?: string }> = [];
+  if (mirrored) {
+    let at = 0;
+    for (const r of refs) {
+      if (r.start > at) pieces.push({ t: text.slice(at, r.start) });
+      pieces.push({ t: text.slice(r.start, r.end), color: r.color });
+      at = r.end;
+    }
+    if (at < text.length) pieces.push({ t: text.slice(at) });
+  }
+
   const hint = useInputMessage(sel.ref);
   return (
     <div className="fbar" data-testid="formula-bar">
@@ -147,9 +167,25 @@ export function FormulaBar() {
         style={{ width: Math.max(58, sel.ref.length * 10 + 16) }}
       />
       <span className="fx">fx</span>
+      <div className="formula-wrap">
+      {mirrored && (
+        <div className="formula-mirror" ref={mirror} aria-hidden="true" data-testid="formula-mirror">
+          {pieces.map((p, i) =>
+            p.color ? (
+              <span key={i} style={{ color: p.color }} data-ref-color={p.color}>
+                {p.t}
+              </span>
+            ) : (
+              <span key={i}>{p.t}</span>
+            ),
+          )}
+        </div>
+      )}
       <input
         ref={input}
-        className="formula"
+        onScroll={syncMirror}
+        onKeyUp={syncMirror}
+        className={'formula' + (mirrored ? ' mirrored' : '')}
         aria-label="Cell contents"
         data-testid="formula-input"
         value={text}
@@ -184,6 +220,7 @@ export function FormulaBar() {
           }
         }}
       />
+      </div>
       {ed.editing && (
         <>
           <button className="icon-btn kb" aria-label={ed.numeric ? 'Text keyboard' : 'Number keyboard'} data-testid="formula-kb" onPointerDown={(e) => e.preventDefault()} onClick={() => edit.setNumeric(!ed.numeric)}>
