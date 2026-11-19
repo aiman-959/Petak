@@ -125,15 +125,17 @@ What was built (details in `AUDIT.md` under each ID):
 
 ## Next, in order
 
-1. Publish the release: push tag `v1.2.0` from a machine that may push tags (the cloud session cannot);
+1. Publish the release: push tag `v1.2.1` from a machine that may push tags (the cloud session cannot);
    CI then attaches the APKs to a GitHub Release. Until then the APK is the `Petak-apks` artifact of the
-   CI run for the release commit `67d84b5` (run 89, build and emulator jobs green):
-   https://github.com/aiman-959/Petak/actions/runs/44346542771/artifacts/14445683396
-   (`Petak-v1.2.0.apk` 6.1 MB, per-ABI APKs, debug APK, SHA256SUMS.txt, SIZE.md). No release key is set in
-   the repository secrets, so CI signs the release APK with its debug key.
+   CI run for the release commit `5ed1688` (run 95, build and emulator jobs green):
+   https://github.com/aiman-959/Petak/actions/runs/44457787218/artifacts/14498028886
+   (`Petak-v1.2.1.apk` 6.1 MB, per-ABI APKs, debug APK, SHA256SUMS.txt, SIZE.md). No release key is set in
+   the repository secrets, so CI signs the release APK with its debug key. (The 1.2.0 build, run 89, is
+   superseded; tag `v1.2.0` was never pushed.)
 2. Hand checks on the phone (TEST-REPORT.md): frame rate at 120 Hz, thermal behaviour, clipboard with
-   other apps, the system picker and share sheet.
-3. L-03: read ODS cell styles (`content.xml` / `styles.xml`) on import.
+   other apps, the system picker and share sheet. Also open an `.ods` made on a computer.
+3. Nothing else is open from the plan. Possible next work: conditional formats, comments and pictures
+   from `.ods` / `.xls` files (both open without them, and say so).
 
 ## How to work in this repo
 
