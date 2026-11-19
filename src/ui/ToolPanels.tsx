@@ -4,12 +4,13 @@ import {
   PenTool, Square, Circle, Minus, Spline, MoveUpRight, Type, ImagePlus, Ruler, Ratio,
   Scissors, Copy, ClipboardPaste, ClipboardType, ArrowDownToLine, ArrowRightToLine, EyeOff, Eye, Link2,
   Code2, Workflow, Gauge, Rows3, Columns3, Trash2, Undo2, Redo2, ListX, Info, MessageSquare, ListChecks, Activity, Target, SlidersHorizontal, Network,
-} from 'lucide-react';
+  ListIndentIncrease, ListIndentDecrease, ChevronsDownUp, ChevronsUpDown,
+} from "lucide-react";
 import { Tool } from './Chrome';
 import { data, edit, fmt, sheets } from './actions';
 import { guard, ui, type ToolTab } from './store';
 import { useSelection } from './hooks';
-import { clip, structure } from './cellActions';
+import { clip, outline, structure } from './cellActions';
 import { pickPicture } from '../pictures/PictureOverlay';
 import { draw, type DrawTool } from '../draw/state';
 
@@ -66,6 +67,7 @@ export function ToolPanel({ tab }: { tab: ToolTab }) {
           <div className="group">
             <h4>Text</h4>
             <div className="btn-grid">
+              <Tool icon={<Type />} label="Font & size" testId="tool-fonts" onClick={() => ui.open('fonts')} />
               <Tool icon={<Bold />} label="Bold" on={sel.bold} testId="fmt-bold" onClick={run(fmt.bold)} />
               <Tool icon={<Italic />} label="Italic" on={sel.italic} onClick={run(fmt.italic)} />
               <Tool icon={<Underline />} label="Underline" onClick={run(fmt.underline)} />
@@ -169,6 +171,15 @@ export function ToolPanel({ tab }: { tab: ToolTab }) {
               <Tool icon={<Filter />} label="Filter on/off" testId="tool-filter" onClick={run(() => ui.toast(data.toggleFilter() ? 'Filter on — tap a header arrow' : 'Filter removed'))} />
               <Tool icon={<FilterX />} label="Clear filters" onClick={run(data.clearFilters)} />
               <Tool icon={<ListChecks />} label="Validation" testId="tool-validation" onClick={() => ui.open('validation')} />
+            </div>
+          </div>
+          <div className="group">
+            <h4>Group rows / columns</h4>
+            <div className="btn-grid">
+              <Tool icon={<ListIndentIncrease />} label="Group" testId="tool-group" onClick={run(outline.group)} />
+              <Tool icon={<ListIndentDecrease />} label="Ungroup" testId="tool-ungroup" onClick={run(outline.ungroup)} />
+              <Tool icon={<ChevronsDownUp />} label="Collapse" testId="tool-collapse" onClick={run(outline.collapse)} />
+              <Tool icon={<ChevronsUpDown />} label="Expand" testId="tool-expand" onClick={run(outline.expand)} />
             </div>
           </div>
           <div className="group">

@@ -111,9 +111,12 @@ export async function detectTier(): Promise<TierConfig> {
  * (e.g. 2.75x -> 2x or 1.5x): roughly 2-3x fewer pixels to draw per frame, with
  * slightly softer cell text. DOM UI (toolbars, dialogs) is unaffected.
  */
+/** how much the grid canvas is stretched on screen: screen pixels per canvas pixel (1 = not capped) */
+export let canvasStretch = 1;
 export function capPixelRatio(max: number) {
   const real = window.devicePixelRatio || 1;
   if (real <= max) return;
+  canvasStretch = real / max;
   try {
     Object.defineProperty(window, 'devicePixelRatio', { configurable: true, get: () => max });
   } catch {

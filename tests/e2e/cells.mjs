@@ -42,6 +42,17 @@ await step('double tap edits in the formula bar; typed text is saved; Enter move
   assert.deepEqual(await sel(), [3, 1, 3, 1]); // moved to B4, still editing-ready
 });
 
+await step('two quick taps on neighbouring rows select, they are not a double tap', async () => {
+  await page.keyboard.press('Escape');
+  const a = await at('C11');
+  const b = await at('C12');
+  await T.tap(a.x, a.y - 4); // 20 px apart, 100 ms: inside the double-tap distance and time
+  await T.tap(b.x, b.y - 8);
+  await page.waitForTimeout(200);
+  assert.deepEqual(await sel(), [11, 2, 11, 2]);
+  assert.equal((await focus()).editable, false);
+});
+
 await step('after an edit a single tap still does not focus anything editable', async () => {
   await page.keyboard.press('Escape');
   await tap('D9');
@@ -186,6 +197,34 @@ await step('tap a column header selects the column; corner selects all', async (
   await page.waitForTimeout(150);
   const all = await sel();
   assert.ok(all[0] === 0 && all[1] === 0 && all[2] >= 999 && all[3] >= 25);
+});
+
+await step('fill handle: drag down continues a series, drag right continues weekdays, formulas adjust', async () => {
+  await fresh();
+  await page.waitForTimeout(400);
+  await ev(() => { const ws = window.__doc.wb.getActiveSheet(); ws.getRange('A1').setValue(1); ws.getRange('A2').setValue(2); ws.getRange('B1').setValue('Mon'); ws.getRange('C3').setValue({ f: '=A3*2' }); ws.getRange('A1:A2').activate(); return 0; });
+  await page.waitForSelector('[data-testid=fill-handle]');
+  const handle = async () => { const b = await (await page.$('[data-testid=fill-handle]')).boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+  let seen = false;
+  await T.drag(await handle(), { x: (await at('A6')).x, y: (await at('A6')).y }, { steps: 10, settle: 80, during: async () => { seen = await page.isVisible('[data-testid=fill-preview]'); } });
+  await idle();
+  assert.ok(seen, 'dashed preview while dragging');
+  assert.deepEqual([await val('A3'), await val('A4'), await val('A5'), await val('A6')], [3, 4, 5, 6]);
+  assert.deepEqual(await sel(), [0, 0, 5, 0], 'the filled range is selected');
+  await ev(() => { window.__doc.wb.getActiveSheet().getRange('B1').activate(); return 0; });
+  await page.waitForTimeout(200);
+  await T.drag(await handle(), { x: (await at('D1')).x, y: (await at('D1')).y }, { steps: 10, settle: 80 });
+  await idle();
+  assert.deepEqual([await val('C1'), await val('D1')], ['Tue', 'Wed']);
+  await ev(() => { window.__doc.wb.getActiveSheet().getRange('C3').activate(); return 0; });
+  await page.waitForTimeout(200);
+  await T.drag(await handle(), { x: (await at('C5')).x, y: (await at('C5')).y }, { steps: 10, settle: 80 });
+  await idle();
+  assert.deepEqual([await val('C4'), await val('C5')], [8, 10]);
+  // one undo takes the fill back
+  await page.click('[data-testid=undo]');
+  await idle();
+  assert.ok((await val('C5')) == null, 'C5 empty again');
 });
 
 await t.finish();

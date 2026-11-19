@@ -1,0 +1,74 @@
+[
+ {
+  "task": "1. Open a file from the phone",
+  "touches": 1,
+  "keys": 0,
+  "how": "Open → pick the file in Android’s picker"
+ },
+ {
+  "task": "2. Type a number into a cell",
+  "touches": 2,
+  "keys": 3,
+  "how": "double tap B2 → type \"42\" → Enter"
+ },
+ {
+  "task": "3. Add up a column with a SUM formula",
+  "touches": 4,
+  "keys": 8,
+  "how": "double tap B7 → type \"=SUM(\" → tap B2 → type \":\" → tap B6 → type \")\" → Enter"
+ },
+ {
+  "task": "4. See the total of a column without a formula",
+  "touches": 1,
+  "keys": 0,
+  "how": "tap column header B"
+ },
+ {
+  "task": "5. Make the header row bold",
+  "touches": 4,
+  "keys": 0,
+  "how": "tap row header 1 → Format → Bold → close the panel"
+ },
+ {
+  "task": "6. Colour a cell",
+  "touches": 4,
+  "keys": 0,
+  "how": "tap C3 → Format → a fill colour → close the panel"
+ },
+ {
+  "task": "7. Insert a row",
+  "touches": 2,
+  "keys": 0,
+  "how": "long press row header 3 → Row above"
+ },
+ {
+  "task": "8. Sort a list by a column",
+  "touches": 4,
+  "keys": 0,
+  "how": "tap A3 → Data → Sort A→Z → close the panel"
+ },
+ {
+  "task": "9. Keep the header row in view (freeze)",
+  "touches": 3,
+  "keys": 0,
+  "how": "Data → Top row → close the panel"
+ },
+ {
+  "task": "10. Make a bar chart of a table",
+  "touches": 5,
+  "keys": 0,
+  "how": "tap A1 → drag the selection handle to C6 → Insert → Bar chart → Add"
+ },
+ {
+  "task": "Copy a cell to another cell",
+  "touches": 4,
+  "keys": 0,
+  "how": "long press C2 → Copy → long press D2 → Paste"
+ },
+ {
+  "task": "Share the workbook",
+  "touches": 2,
+  "keys": 0,
+  "how": "⋮ → Share → pick the app in Android’s share sheet"
+ }
+]

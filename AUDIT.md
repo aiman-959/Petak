@@ -4,7 +4,15 @@ Audit of Petak 1.1.0 (commit `20ec565`), done before any fixing. Every finding b
 reproduced by a script in this repository; nothing is listed from guesswork unless marked
 **(code reading)**.
 
-Status column: **Open** = not fixed yet. This file is updated at the end of every phase.
+Status column: **Open** = not fixed yet; **Fixed** = fixed and covered by the named automated test
+(phone-profile Playwright suites in `tests/e2e/`, unit tests in `tests/unit/`). **Partly** = some of it
+fixed, the rest says what remains. This file is updated at the end of every phase.
+
+**Final state for release 1.2.1:** 47 findings (7 Critical, 12 Known, 7 High, 10 Medium, 3 Low, F-01…F-08).
+45 fixed, each with the test that proves it; K-05 partly (frame rate to be measured on the phone);
+K-07 mitigated (Android ends the app when Play services restarts; the session survives).
+1.2.1 adds L-03 (`.ods` formatting) and F-08 (found while testing it) to 1.2.0.
+Test results: [TEST-REPORT.md](TEST-REPORT.md).
 
 ## How the audit was done
 
@@ -36,44 +44,53 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 
 | ID | Sev. | Finding | Status |
 |---|---|---|---|
-| C-01 | Critical | Saving destroys everything Petak does not model: pictures, hyperlinks, autofilter, named ranges, tables, page setup, rich text, column styles… **Save writes over the original file.** | Open |
-| C-02 | Critical | Typing in a cell after a double tap (or with a keyboard) is thrown away | Open |
-| C-03 | Critical | Tapping a cell while typing a formula discards the formula | Open |
-| C-04 | Critical | "Open with Petak" starts the app but does not open the file | Open |
-| C-05 | Critical | Named ranges are not loaded: formulas using them show `#NAME?` (and that is what gets saved) | Open |
-| C-06 | Critical | Table references (`Sales[Amount]`) show `#ERROR!` | Open |
-| C-07 | Critical | Dates in Jan–Feb 1900 are one day off (`=DATE(1900,2,29)`) | Open |
-| K-01 | High | Shapes cannot be selected after drawing, so cannot be deleted | Open |
-| K-02 | High | Polyline: adds a point on every tap, hard to finish | Open |
-| K-03 | High | Line tool does not behave as press, drag, release on the phone | Open |
-| K-04 | High | Nothing snaps when a shape starts in the middle of a cell | Open |
-| K-05 | High | Scrolling and pinch zoom are slow and stutter | Open |
-| K-06 | High | Excel fonts do not display correctly | Open |
-| K-07 | High | Opening another file does nothing on the phone | Open |
-| K-08 | High | Grid lines and borders are broken / faded at zoom ≠ 100 % | Open |
-| K-09 | High | Hyperlinks load as plain text | Open |
-| K-10 | High | Pictures in files are not loaded | Open |
-| K-11 | High | Frozen rows/columns: content overlaps at the freeze line | Open |
-| K-12 | High | A single tap on a cell opens the keyboard | Open |
-| H-01 | High | No keyboard support at all: arrows, Shift/Ctrl+arrows, Delete, F2, Ctrl+C/X/V do nothing | Open |
-| H-02 | High | No copy / cut / paste anywhere in the phone UI; long press does nothing | Open |
-| H-03 | High | `.xls` files open without any formatting or frozen panes | Open |
-| H-04 | High | Autofilter in a file is not loaded | Open |
-| H-05 | High | Columns/rows cannot be resized by touch; no hide/unhide in the UI | Open |
-| H-06 | High | Unsaved-changes prompt cannot save: only "Continue" (discard) or cancel | Open |
-| H-07 | High | Rich text in a cell loses its formatting on load (flattened) | Open |
-| M-01 | Medium | No fill handle (copy / series by dragging) | Open |
-| M-02 | Medium | No status bar (Sum / Average / Count of the selection) | Open |
-| M-03 | Medium | Formula entry: no argument hints, no coloured references | Open |
-| M-04 | Medium | Number cells do not get a numeric keyboard; Tab does not move right | Open |
-| M-05 | Medium | Charts, sparklines, slicers, drawings are not on the main undo stack | Open |
-| M-06 | Medium | Circular reference shows `#CYCLE!` without explanation | Open |
-| M-07 | Medium | CSV export writes only the active sheet and does not say so | Open |
-| M-08 | Medium | Theme colours are read with the default Office theme, wrong for other themes | Open |
-| M-09 | Medium | No recent files list, no print / PDF export of a sheet | Open |
-| M-10 | Medium | Sheet rename uses the browser `prompt()`; no move/reorder of sheets | Open |
-| L-01 | Low | CSV: `0012` becomes `12` (Excel does the same; Petak could keep text) | Open |
-| L-02 | Low | "Opened file" toast covers the last visible row for 3 s | Open |
+| C-01 | Critical | Saving destroys everything Petak does not model: pictures, hyperlinks, autofilter, named ranges, tables, page setup, rich text, column styles… **Save writes over the original file.** | Fixed: lossless save patches the original package (`ooxml-roundtrip.test.ts`, `features.mjs`) |
+| C-02 | Critical | Typing in a cell after a double tap (or with a keyboard) is thrown away | Fixed (`cells.mjs`) |
+| C-03 | Critical | Tapping a cell while typing a formula discards the formula | Fixed (`cells.mjs`) |
+| C-04 | Critical | "Open with Petak" starts the app but does not open the file | Fixed; confirmed on the emulator (running app, cold start, `.xls`) |
+| C-05 | Critical | Named ranges are not loaded: formulas using them show `#NAME?` (and that is what gets saved) | Fixed (unit tests) |
+| C-06 | Critical | Table references (`Sales[Amount]`) show `#ERROR!` | Fixed (unit tests) |
+| C-07 | Critical | Dates in Jan–Feb 1900 are one day off (`=DATE(1900,2,29)`) | Fixed (unit tests) |
+| K-01 | High | Shapes cannot be selected after drawing, so cannot be deleted | Fixed (`draw-touch.mjs`, `part3.mjs`) |
+| K-02 | High | Polyline: adds a point on every tap, hard to finish | Fixed (`draw-touch.mjs`) |
+| K-03 | High | Line tool does not behave as press, drag, release on the phone | Fixed (`draw-touch.mjs`; emulator run 23 draws a line by press–drag–release) |
+| K-04 | High | Nothing snaps when a shape starts in the middle of a cell | Fixed (`draw.test.ts`, `draw-touch.mjs`) |
+| K-05 | High | Scrolling and pinch zoom are slow and stutter | Partly: Mid-tier slow frames halved, High tier 58–60 fps in touch flings (`PHASE5.md`); needs a measurement on the phone |
+| K-06 | High | Excel fonts do not display correctly | Fixed (`fonts.mjs`, `fonts.test.ts`); look on a phone still to check |
+| K-07 | High | Opening another file does nothing on the phone | Cause found; mitigated (`files.mjs`). Opening a second file works on the emulator |
+| K-08 | High | Grid lines and borders are broken / faded at zoom ≠ 100 % | Fixed (`render.mjs`) |
+| K-09 | High | Hyperlinks load as plain text | Fixed (`cells2.mjs`) |
+| K-10 | High | Pictures in files are not loaded | Fixed (`cells2.mjs`) |
+| K-11 | High | Frozen rows/columns: content overlaps at the freeze line | No longer reproduces (see below); `render.mjs` |
+| K-12 | High | A single tap on a cell opens the keyboard | Fixed (`cells.mjs`) |
+| H-01 | High | No keyboard support at all: arrows, Shift/Ctrl+arrows, Delete, F2, Ctrl+C/X/V do nothing | Fixed (`cells.mjs`) |
+| H-02 | High | No copy / cut / paste anywhere in the phone UI; long press does nothing | Fixed (`cells.mjs`, `cells2.mjs`) |
+| H-03 | High | `.xls` files open without any formatting or frozen panes | Fixed (`biff.test.ts`, `files.mjs`); frozen panes read but no fixture has them |
+| H-04 | High | Autofilter in a file is not loaded | Fixed (unit + e2e) |
+| H-05 | High | Columns/rows cannot be resized by touch; no hide/unhide in the UI | Fixed (`cells.mjs`) |
+| H-06 | High | Unsaved-changes prompt cannot save: only "Continue" (discard) or cancel | Fixed (`files.mjs`) |
+| H-07 | High | Rich text in a cell loses its formatting on load (flattened) | Fixed (`richtext.test.ts`, `files.mjs`) |
+| M-01 | Medium | No fill handle (copy / series by dragging) | Fixed (`cells.mjs`, `fill.test.ts`): drag grip under the selection |
+| M-02 | Medium | No status bar (Sum / Average / Count of the selection) | Fixed (`cells2.mjs`) |
+| M-03 | Medium | Formula entry: no argument hints, no coloured references | Fixed (`phase3.mjs`, `formulaRefs.test.ts`): argument hints, coloured references in the field and on the grid |
+| M-04 | Medium | Number cells do not get a numeric keyboard; Tab does not move right | Fixed (`cells.mjs`) |
+| M-05 | Medium | Charts, sparklines, slicers, drawings are not on the main undo stack | Fixed (`phase3.mjs`): charts, sparklines, slicers, pivots, drawings on the main Undo / Redo |
+| M-06 | Medium | Circular reference shows `#CYCLE!` without explanation | Fixed (`phase3.mjs`, `phase3.test.ts`): every error value explained; #CYCLE! names the loop |
+| M-07 | Medium | CSV export writes only the active sheet and does not say so | Fixed (`phase3.mjs`): the message names the sheet written and the sheets left out |
+| M-08 | Medium | Theme colours are read with the default Office theme, wrong for other themes | Fixed (`phase3.test.ts`): colours come from the file’s own theme |
+| M-09 | Medium | No recent files list, no print / PDF export of a sheet | Fixed: recent files (`files.mjs`); Print / PDF of a sheet (`phase3.mjs`, `sheetPdf.test.ts`) |
+| M-10 | Medium | Sheet rename uses the browser `prompt()`; no move/reorder of sheets | Fixed (`phase3.mjs`): rename dialog with Excel’s rules, move left / right |
+| L-01 | Low | CSV: `0012` becomes `12` (Excel does the same; Petak could keep text) | Fixed (`csv.test.ts`, `phase3.mjs`): leading-zero and long digit strings stay text; CSV dates get a date format |
+| L-02 | Low | "Opened file" toast covers the last visible row for 3 s | Fixed (`phase3.mjs`): messages at the top, see-through to taps |
+| L-03 | Low | `.ods` files open without fonts, fills, borders or column widths (values, formulas and merges are read) | Fixed in 1.2.1 (`ods.test.ts`, `roundtrip.mjs`): fonts, fills, borders, alignment, wrap, rotation, number formats, widths, heights, hidden rows / columns, frozen panes are read and match LibreOffice's own .xlsx of the file |
+| F-01 | High | 11 built-in functions give wrong results: INT of negatives, CEILING.MATH / FLOOR.MATH mode, INDEX on a one-row array, VALUE("$1,000"), ISREF, and NORMSDIST, LOGNORMDIST, HYPGEOMDIST, NEGBINOMDIST, BETADIST (#N/A / #NUM!) | Fixed (`function-check.test.ts`, `functions.test.ts`): all 476 functions match Excel, see FUNCTION-CHECK.md |
+| F-02 | High | Without clipboard permission (a WebView may refuse it) every Paste threw, and Univer showed a "Permission Denied — please allow Univer…" banner over the top rows on each copy | Fixed (`commands.mjs` runs without the permission): Paste uses what was copied in Petak, no banner |
+| F-03 | Medium | After a row-header selection and a selection made in code, the next tap on a cell was ignored: the long-press menu then acted on the old cells (Clear formats hit the wrong cell) | Fixed (`commands.mjs`) |
+| F-04 | Medium | Sort kept the header only when the sorted column had numbers: sorting a text column moved its heading into the list | Fixed (`taps.mjs` 8, `phase3.test.ts`): headings guessed like Excel (any column text over numbers, bold first row, frozen row) |
+| F-05 | Medium | Typing into a cell formatted as Text turned `0012` into 12 and `=1+1` into a formula | Fixed (`commands.mjs`) |
+| F-06 | Medium | Saving a workbook that came from .xls / .ods / CSV as .xlsx changed its default font to Calibri 11 and its column widths to 64 px | Fixed (`roundtrip.mjs`, `ooxml-roundtrip.test.ts`) |
+| F-08 | High | Saving a workbook that did not come from an .xlsx (new, .xls, .ods, CSV) wrote a broken `styles.xml` when it had a number format Excel does not have built in (Currency, Euro, any Date from the Format menu) together with a font, fill or border: Excel reports such a file as damaged, Petak lost the number formats on reopening | Fixed in 1.2.1 (`ooxml-roundtrip.test.ts`; `roundtrip.mjs` now checks every saved package is well-formed XML) |
+| F-07 | Low | Univer's command stack grew by about 1.4 entries per tap for the whole session (54 after 40 taps) and kept disposed sheet scenes reachable | Fixed (`commands.mjs`): stays empty; 20 files in a row: no growth in live canvases, heap or renderer memory (`tests/perf/PHASE5.md`) |
 
 Device-only observations (emulator) are in the section "On a real Android WebView" at the end.
 
@@ -123,6 +140,8 @@ Device-only observations (emulator) are in the section "On a real Android WebVie
   app starts with the previous session. `.xls` is not registered at all.
 - **Planned fix:** native plugin method + event for VIEW/SEND intents (cold start and while
   running), copy the `content://` stream to the cache, open it; register xlsx, xlsm, xls, csv, ods.
+- **Fix:** `DocumentsPlugin` keeps the intent's file (cold start: `load()`, running: `handleOnNewIntent` + `openFile` event) and `takeLaunchFile()` hands it to the page, which asks about unsaved changes and opens it. The manifest now also takes `.xls`, `.ods`, tab-separated files, EDIT and SEND ("Share to Petak"). A file opened this way is often read-only: Save then asks where to put it. Not testable in the browser; the emulator job's "Open with" check is the proof.
+- **Emulator (Android 14, CI run of `5db8e92` and the one after):** with a workbook open and unsaved, `am start -a VIEW` on `roster.xlsx` shows "“Untitled.xlsx” has unsaved changes. Save them before you open “roster.xlsx”?" and then opens it; a second file (`qm-report.xlsx`) opens; `legacy.xls` opens with its formatting (A1 fill `#14532d`, 22 pt); from a stopped app the intent starts Petak with `people.csv`. Petak is listed as a handler for `content://` `.xls` files.
 
 ### C-05 Named ranges are not loaded
 - **Steps:** open a workbook with a name `Qty` and `=SUM(Qty)`. `audit6.mjs`.
@@ -153,6 +172,7 @@ Device-only observations (emulator) are in the section "On a real Android WebVie
   With the Select tool an unfilled rectangle can only be hit near its outline on the phone.
 - **Planned fix:** return to Select after one shape (long-press a tool to lock it); 16 dp hit
   tolerance; tapping a shape in normal mode selects it; selection toolbar with Delete.
+- **Fixed:** after one shape the tool returns to Select (long-press or double-click a tool to keep it on) and the new shape is selected; tap selects with a 16 px tolerance (inside unfilled shapes too while drawing); floating tool bar with Delete, Duplicate, Bring to front, Send to back, Lock; outside drawing mode a tap on a shape's outline opens drawing mode with it selected. Tests: `draw-touch.mjs` (K-01 steps, lock, layers list, outside drawing mode), `part3.mjs`.
 
 ### K-02 Polyline never finishes
 - **Steps:** Draw → Polyline, tap points. `audit2.mjs` (touch emulation finished with a double tap; on the phone it did not).
@@ -161,11 +181,13 @@ Device-only observations (emulator) are in the section "On a real Android WebVie
   the double-tap window is 350 ms / 14 px and the first tap of the double tap adds a stray point.
 - **Planned fix:** "Done" and "Undo point" buttons next to the finger, double tap (without a stray
   point), tap the first point to close, Back cancels.
+- **Fixed:** a point is placed when the finger lifts (rubber band while it is down); double tap finishes without a stray point; tapping the first point closes the shape (`closed`, can be filled); chips Undo point / Cancel / Done above the bottom bar; Back and Escape cancel. Tests: `draw-touch.mjs` (four K-02 steps). The first emulator run (CI run 23) showed the double tap not finishing with `adb` taps: it was timed release to release; it is now timed from the first release to the second press, like the grid's double tap, with a test for a slow second tap.
 
 ### K-03 Line tool is not press–drag–release on the phone
 - **Steps:** Draw → Line, press, drag, release. Works in touch emulation; reported as tap-to-tap on the phone (see device run).
 - **Planned fix:** handle raw touch events (not only pointer events) with `touch-action: none`,
   ignore `pointercancel` caused by the WebView's own gesture detection, live preview while dragging.
+- **Fixed in the browser:** every drawing tool is press, drag (live preview, length · angle label), release. A second finger within 250 ms cancels the shape and pinches instead; later it turns snapping off while it rests. If the WebView cancels the pointer mid-shape, the gesture carries on with the raw touch events instead of being lost. The overlay hands pans, flings, pinches and cell taps to the grid's touch layer, so the sheet scrolls exactly as outside drawing mode. Tests: `draw-touch.mjs`. Emulator (Android 14 WebView, `adb input swipe`): line drawn by press–drag–release, rectangle fits cells and the tool returns to Select, tap selects the rectangle (CI run 23).
 
 ### K-04 Nothing snaps when starting mid-cell
 - **Steps:** Draw → Rectangle, start in the middle of a cell. `audit2.mjs`.
@@ -173,6 +195,7 @@ Device-only observations (emulator) are in the section "On a real Android WebVie
   free-hand, and there is no "fit to cells" mode. Near an edge it does snap (`{x:88,y:360,w:126,h:84}`).
 - **Planned fix:** 12 dp snap distance in screen space at every zoom, cell centres as second
   priority, a visible snap marker, and a "fit to cells" rectangle that covers a cell range exactly.
+- **Fixed:** 12 px snap distance on screen at every zoom; candidates scored by distance + priority (cell corners, cell centres +4 px, object points +8 px); otherwise angle (0/90/180/270 within 6°, multiples of 30°/45° within 4°, optional 15°), then cell edge or centre per axis; marker, label and guide line; magnet chip turns all snapping off; rectangles fit to cells by default. Tests: `draw.test.ts` (angle table, priority at three zooms, fit to cells, hit tolerance), `draw-touch.mjs`.
 
 ### K-05 Scrolling and pinch zoom stutter
 - **Steps:** roster file, drag / fling / pinch. `tests/audit/profile.mjs` with 4× CPU throttling (approximates a phone core).
@@ -195,10 +218,31 @@ Device-only observations (emulator) are in the section "On a real Android WebVie
 - **Planned fix:** metric-compatible substitutes (Carlito, Caladea, Liberation Sans/Serif/Mono,
   Noto Sans CJK), downloaded on first use with the size shown, own fonts via Settings → Fonts,
   a notice when a substitute is used; original font names are saved back unchanged.
+- **Fixed:** Carlito, Caladea, Arimo, Tinos and Cousine are in the app (2.4 MB, no download needed, works offline) and registered under the Excel names, so the grid asks for "Calibri" and gets Carlito: same widths, and files keep the original names. A font really installed on the device wins. Latin, Latin Extended, Cyrillic and Greek; each file loads only when used, before the workbook is measured. CJK uses the system's Noto Sans CJK. The "Opened" message says which fonts are substituted or missing. Format → Font & size: font and size for the selection, and adding your own .ttf / .otf / .woff / .woff2 files (kept on the device). Tests: `fonts.mjs`, `fonts.test.ts`.
 
 ### K-07 Opening another file does nothing
 - **Steps:** open a file, then open a second one. Works in the browser build (`audit1.mjs`: canvas changes). See device run for the phone.
 - **Planned fix:** see device section; plus Save / Don't save / Cancel prompt, clear errors, progress.
+- **Cause (emulator logs):** Android ended the app: `Killing com.zetl.petak: depends on provider
+  com.google.android.gms/.fonts.provider.FontsProvider in dying proc com.google.android.gms.persistent`.
+  For its first seconds Petak's process holds a connection to Play services' font provider; when
+  Play services restarts in that window, Android kills every app holding such a connection. The
+  next start restored the session saved *before* the new file was opened, so the file seemed not
+  to open. The connection is there 0.7 s after launch, before the page has loaded a single font,
+  and goes away by itself: it is the system WebView's own start-up (Chromium fetches Play services'
+  list of downloadable fonts when its renderer starts), which an app cannot switch off. Removed on
+  Petak's side anyway: AndroidX emoji start-up (also fetches from that provider) and every CSS
+  `local()` font lookup (the WebView answers those through the same provider).
+- **Mitigation:** the session is saved 0.4 s after any workbook is loaded instead of after the 10–20 s
+  autosave interval, so if Android ends the app the restart shows the file just opened
+  (`files.mjs`: open, reload 1.5 s later, the new file is there; fails without the change).
+  On a phone Play services rarely restarts; on the freshly booted CI emulator it does so often,
+  which is why the device job saw it in about one run in three.
+- **Emulator after the change (run of `adaed19`):** Android ended Petak again (same reason) during an
+  "Open with"; the restarted app showed the file that had just been opened (`qm-report.xlsx`), and
+  the next "Open with" (`legacy.xls`) and a cold start worked. If the app is ended before it has
+  even read the incoming file, that one "Open with" is lost and has to be repeated; Android does not
+  hand the file over again.
 
 ### K-08 Grid lines and borders broken at zoom ≠ 100 %
 - **Steps:** roster or QM report, zoom to 85 %, 70 %, 60 %. `audit1.mjs`, `audit3.mjs` (screenshots `21-roster-zoom-0.85.png`).
@@ -207,6 +251,7 @@ Device-only observations (emulator) are in the section "On a real Android WebVie
   gaps; grid lines are blurred across two device pixels.
 - **Planned fix:** Petak's own line pass after fills: borders and grid lines snapped to device
   pixels at every zoom; merged cells hide inner grid lines.
+- **Cause found and fixed:** the lines were in the canvas all along, one canvas pixel wide. On Low / Mid tier devices the grid canvas has fewer pixels than the screen (2 instead of 2.625 per CSS pixel on the test phone) and is stretched by a non-whole factor, which smears a one-pixel line into faint grey, worst between pastel fills and after a scroll that lands between pixels. Borders and grid lines are now drawn one *screen* pixel wide (`fixThinLines` in `src/grid/view.ts`). High tier devices draw at the screen's own resolution and were not affected. Test: `render.mjs` measures the screenshot at 60–130 % after scrolling, and shows the same borders are faint with the fix switched off.
 
 ### K-09 Hyperlinks load as plain text
 - **Steps:** QM report. `audit1.mjs`: `A2 cell {"v":"Procedure QM-014 (intranet)","t":1,"s":"s2"}`.
@@ -227,6 +272,7 @@ Device-only observations (emulator) are in the section "On a real Android WebVie
   the frozen header.
 - **Planned fix:** clip each pane; draw merged cells crossing a split once per pane with
   pane-local alignment; one divider line.
+- **Re-checked after the touch / compositor rework:** the overlap no longer happens. A merged title that crosses the freeze line shows its start in the frozen pane and the scrolled part in the other pane (as Excel does), rows no longer show through under the frozen header, and taps go to the right pane (`render.mjs`). No further change made.
 
 ### K-12 A single tap opens the keyboard
 - **Steps:** edit any cell once, then tap another cell. `audit2.mjs`.
@@ -251,15 +297,180 @@ context menu (Cut, Copy, Paste, Paste special, Insert, Delete, Clear, Format, Li
 borders, sizes and frozen panes do not. **Fix:** read what SheetJS CE exposes (column widths, row
 heights, number formats, freeze panes, fills); tell the user formatting of old `.xls` files is
 limited; never save in place.
+**Fixed:** `src/io/biff.ts` reads the looks straight from the BIFF8 workbook stream (SheetJS CE only gives values): fonts, sizes, bold / italic / underline / strike, text and fill colours (with the file's palette), borders, alignment, wrap, column widths, row heights, hidden rows / columns, frozen panes. Blank cells that only have a fill or border are kept. The open message says charts, pictures and conditional formats are not shown; Save writes a new `.xlsx`. Frozen panes are read from the WINDOW2 / PANE records but the LibreOffice-made fixture has none, so that part is untested. Encrypted or pre-97 files open unformatted as before.
 
 ### H-04 Autofilter not loaded — see C-01; **fix:** load into Univer's filter.
 ### H-05 No touch resize, no hide/unhide
 `drag column A header edge: width 88 -> 88`. **Fix:** drag header edges, double tap to autofit, hide/unhide, group.
 ### H-06 Unsaved-changes prompt cannot save — **fix:** Save / Don't save / Cancel.
 ### H-07 Rich text flattened — **fix:** keep rich text runs when the cell is not edited (part of C-01), show runs.
+**Fixed:** a rich string is shown as runs with their own font, size, colour, bold / italic / underline / strike and super- / subscript; runs without formatting take the cell's font, as in Excel. Saved back unchanged when the cell was not edited; typing over the cell replaces the runs. Multi-line rich strings are still shown as plain text.
 
 ## Medium / Low
 M-01…M-10 and L-01, L-02 are listed in the summary; each maps to a Phase 3 acceptance item.
+All are fixed; the proof for each is in the summary table and in `tests/e2e/phase3.mjs`. Also added in
+Phase 3: row / column grouping (Data → Group / Ungroup / Collapse / Expand, undoable, saved as Excel
+outline levels) and a long-press on a sheet tab that no longer closes its own menu.
+
+## Phase 4: every function and feature
+
+### F-01 Wrong function results
+Every function Petak lists (476) was given one worked example on a shared data block
+(`tests/functions/examples.mjs`) and computed by Petak and by LibreOffice 24.2 (headless, the
+file round-tripped as .xlsx); where LibreOffice lacks a function the reference is Excel's
+documented example. 11 were wrong, all in HyperFormula's own versions:
+
+| Formula | Was | Excel |
+|---|---|---|
+| `=INT(-8.9)` | -8 | -9 |
+| `=CEILING.MATH(-5.5,2,-1)` | -4 | -6 |
+| `=FLOOR.MATH(-5.5,2,-1)` | -6 | -4 |
+| `=INDEX(TEXTSPLIT("a,b,c",","),2)` | #NUM! | b |
+| `=VALUE("$1,000")` | #VALUE! | 1000 |
+| `=ISREF(A1)` | FALSE | TRUE |
+| `=NORMSDIST(1.333333)` | #N/A | 0.908788726 |
+| `=LOGNORMDIST(4,3.5,1.2)` | #N/A | 0.0390835557 |
+| `=HYPGEOMDIST(1,4,8,20)` | #N/A | 0.363261094 |
+| `=NEGBINOMDIST(10,5,0.25)` | #N/A | 0.0550486604 |
+| `=BETADIST(2,8,10,1,3)` | #NUM! | 0.685470581 |
+
+**Fixed:** Petak's own versions replace these (`src/engine/excelFunctions.ts`). INDEX past the
+end now gives #REF! as in Excel (was #NUM!). Seven more differ from LibreOffice but match Excel
+(LibreOffice deviates or lacks the function); the table in FUNCTION-CHECK.md says why for each.
+
+### F-02 … F-06 found by pressing every command
+`tests/e2e/commands.mjs` presses each of the 153 menu commands (FEATURES.md lists the test for each),
+`tests/e2e/roundtrip.mjs` opens, saves and reopens every sample file and has LibreOffice recalculate
+what Petak wrote, and `tests/e2e/taps.mjs` does ten everyday tasks with real touches. They found:
+
+- **F-02 Clipboard without permission.** Univer's clipboard `read()` returned the rejected promise
+  instead of catching it, so Paste, Paste values / format / formulas threw; every copy showed a
+  "Permission Denied — please allow Univer to access your clipboard" banner across rows 1–2 that
+  also swallowed taps there. **Fix:** an unreadable clipboard reads as empty (Univer then pastes
+  from its own copy), the banner is off, and Paste says "Nothing to paste" when nothing was copied
+  (`src/univer/setup.ts`, `src/ui/cellActions.ts`). The command suite runs without clipboard
+  permission; `cells2.mjs` keeps covering the system clipboard.
+- **F-03 A tap ignored after a header menu.** Long press a row header (selects the row), then
+  Petak selects a cell in code (`activate()`: Enter after typing moves down this way, as do the
+  cell-address box, Find next and the fill handle): Univer ignored the next tap on a cell. A long press there opened the menu for the old selection, so Clear formats
+  cleared B1 when A1 was pressed. **Fix:** after forwarding a tap the grid checks that the tapped
+  cell (or its merged area) is selected and selects it if not (`src/grid/input.ts`).
+- **F-04 Sort moved the heading.** The header guess looked only at the sorted column: a text column
+  under a text heading ("Item" over "pear, apple") was sorted with its heading. **Fix:** Excel's
+  guess: a heading when any column has text on top and numbers / dates below, when the first row is
+  bold or filled and the next is not, or when the first row is frozen (`hasHeaderRow`).
+- **F-05 Text cells.** A cell formatted as Text (`@`) must keep what is typed; `0012` became 12.
+  **Fix:** `commitInput` stores the typed text as a string for Text cells.
+- **F-06 Default font and widths of non-xlsx workbooks.** A workbook opened from .xls / .ods / CSV
+  and saved as .xlsx got Excel's blank defaults (Calibri 11, 64 px columns) instead of its own
+  (e.g. Arial 10, 88 px). **Fix:** the writer puts the workbook's default font into the new
+  styles part and writes `defaultColWidth` for new sheets (`src/io/ooxml/write.ts`).
+
+Round trips (`roundtrip.mjs`): roster and qm-report from Excel and from LibreOffice, macro.xlsm,
+legacy.xls, an .ods made by LibreOffice, people.csv. For each: Petak's values equal LibreOffice's
+reading of the original; after an edit, save and reopen every cell's value, formula and style,
+merges, frozen panes, column widths and row heights are unchanged; LibreOffice recalculates every
+formula in Petak's file to the same values. One known difference: the CSV identifier `0012` stays
+text in Petak (L-01), LibreOffice makes it 12.
+
+## Phase 5: performance and stability
+
+Scripts: `tests/perf/phase5.mjs` (results in `tests/perf/PHASE5.md`) and `tests/perf/perf50k.mjs`
+(`tests/perf/RESULTS.md`). Headless Chromium on a 4-core server without a GPU, Pixel 7 screen, touch
+input; the CPU is slowed ÷6 / ÷4 / ÷1 for the Low / Mid / High tiers.
+
+**Fling and pinch, 10 s each** (touch flings with momentum; two-finger pinch in and out):
+
+| Tier | File | Open | Fling fps · frames > 33 ms | Pinch fps · frames > 33 ms |
+|---|---|---:|---:|---:|
+| Low ÷6 | 50 large-font rows | 3.1 s | 42.6 · 8.4 % | 48.7 · 2.9 % |
+| Low ÷6 | 50,000 × 20 | 9.1 s | 38.2 · 11.8 % | 46.9 · 3.5 % |
+| Mid ÷4 | 50 large-font rows | 2.4 s | 42.7 · 6.7 % | 52.2 · 1.9 % |
+| Mid ÷4 | 50,000 × 20 | 8.3 s | 37.6 · 10.7 % | 48.6 · 3.1 % |
+| High | 50 large-font rows | 1.3 s | 58.0 · 0.2 % | 59.4 · 0.2 % |
+| High | 50,000 × 20 | 3.9 s | 59.6 · 0 % | 59.7 · 0 % |
+
+Main-thread profile per second of fling (Mid, 50k rows): 636 ms busy, of which script 269 ms, style
+15 ms, layout 3 ms and 349 ms raster / compositing, which a phone does on the GPU. The long frames
+are the moments a fling reaches an area of the sheet not drawn yet: Univer then draws a full screen
+of cells in one frame.
+
+**50,000 × 20 benchmark, before (13 Nov, 1.1.0 + Phase 2 start) and now** (same script; synthesized
+scroll gestures; the server's speed varies, so both of today's runs are given):
+
+| | High, before | High, now | Mid ÷4, before | Mid ÷4, now (two runs) |
+|---|---:|---:|---:|---:|
+| Open until all formulas computed | 5.26 s | 3.12 s | 8.65 s | 6.64 s · 6.29 s |
+| Edit → dependent formula updated | 61 ms | 40 ms | 203 ms | 255 ms · 239 ms |
+| Incremental autosave after an edit | 178 ms¹ | 25 ms | 1036 ms¹ | 96 ms |
+| Scroll average fps | 59.5 | 55.7 · 56.6 | 19.6 | 20.3 · 29.9 |
+| Scroll frames > 25 ms | 0.4 % | 6.4 % · 5.3 % | 74.7 % | 37.4 % · 31.3 % |
+
+¹ The earlier figure included work that is now done once right after a file opens (the whole session
+is saved 0.4 s after opening, K-07): 239 ms High, 1089 ms Mid. Memory after garbage collection with
+50,000 rows open: JS heap 75 MB, renderer 845 MB (High) / 654 MB (Mid). Without a collection first
+the renderer can show 1.4–1.7 GB of canvas memory that is already released (the earlier 1,041 MB was
+read that way, so it is not comparable).
+
+On the Mid tier the share of slow frames halved. On the High tier the synthesized gestures now show
+some 33 ms frames (5–6 %), where the touch flings above show none; on the phone the GPU does the
+raster. **K-05 stays open until it is measured on the target phone** (TEST-REPORT.md lists the check).
+
+**Twenty files in a row** (Mid tier; the samples, generated 5,000- and 20,000-row files and the
+large-font file, twice through): every open 1.1–3.1 s, no page errors, the app still edits and
+computes after the 20th. The same file at #10 and #20: JS heap 44.8 → 45.2 MB, live canvases 10 → 10,
+listeners 557 → 577. A heap snapshot finds no detached canvases kept by the app; renderer memory
+returns to the same level. The DOM node count (+9 per file) and the listener count (+2 per file) rise
+in the browser test only: they are the hidden file-picker inputs and their change / cancel handlers,
+which DevTools (the test driver) keeps; the app on Android uses the system picker instead.
+
+### F-07 Univer's command stack grew with every tap
+Found while looking for leaks. Petak cancels Univer's in-cell editor commands on phones (K-12), and
+Univer only takes a command off its execution stack when it succeeds: a cancelled one stayed there
+for good, about 1.4 entries per tap (54 after 40 taps), each keeping a reference to the sheet's scene.
+Every later command scanned that stack. **Fix:** the cancelling listener removes the entry
+(`src/state/doc.ts`); `commands.mjs` checks the stack is empty after taps.
+
+## After 1.2.0: L-03 and F-08 (release 1.2.1)
+
+### L-03 `.ods` formatting
+SheetJS reads an `.ods` file's values, formulas and merges only. `src/io/ods.ts` reads the rest from
+the package and hands it to the same loader as the `.xls` looks (H-03):
+
+- cell styles from `content.xml` and `styles.xml` with their parent styles and the document default:
+  font, size, bold, italic, underline, strike-through, colour, fill, the four borders and diagonals
+  (width and line style mapped to Excel's thirteen styles the way LibreOffice does), horizontal and
+  vertical alignment, wrap, rotation;
+- number formats: ODF number, percentage, currency (with the locale, so `1.234,57 €` stays German),
+  scientific, fraction, date, time (elapsed `[h]:mm` too) and text styles, with their conditions
+  (positive; negative; zero sections, `[>100]`) and colours (`[Red]`);
+- column widths, row heights (heights LibreOffice fitted to the content stay fittable; set ones are
+  fixed), hidden rows and columns, a whole-row or whole-column look, the default row height and
+  column width, frozen panes from `settings.xml`;
+- date and time cells at their exact value: SheetJS drops fractions of a second and counts dates
+  before March 1900 one day short.
+
+The reference is LibreOffice itself. `tests/fixtures/make-ods.mjs` has LibreOffice make `looks.ods`
+(every border style, alignment, rotation, font, fill and 26 number formats) and its own `.xlsx` of
+that file; every one of its 154 cells must look the same in both, number formats compared by what
+they show. Two differences come from LibreOffice, not from Petak: its `.xlsx` gives four cells the
+theme colour instead of their own font colour (checked against the colours the file was made with),
+and writes heights it fitted to the content as its 13.8 pt standard. `roundtrip.mjs` opens an `.ods`
+LibreOffice made from the Excel roster and checks it looks as the roster does.
+
+A 50 000-row `.ods` (139 MB of XML) takes 1.6 s more to read its looks (one pass with one regular
+expression; 0.8 s of that is unzipping and decoding), read before SheetJS so the two copies of the XML
+are never in memory together. When the file opens, a notice says what an `.ods` does not bring
+along (charts, pictures, comments, conditional formats) and that Save writes a new `.xlsx`.
+
+### F-08 Broken `styles.xml` for new workbooks
+Found by the `.ods` round trip: after Save and reopening, the number formats were gone. The style
+writer inserts a `<numFmts>` collection in front of `<fonts>` when the package has none (every
+workbook that did not come from an .xlsx) and also rewrites `<fonts>` when a font is added: both
+edits started at the same offset and the insertion was applied first, so the fonts edit overwrote
+part of it (`</fonts>mt numFmtId="166"…`). **Fix:** at the same offset the replaced collection goes
+first (`src/io/ooxml/styles.ts`). `roundtrip.mjs` now checks that every part of every saved package
+is well-formed XML.
 
 ## On a real Android WebView (emulator, API 34)
 

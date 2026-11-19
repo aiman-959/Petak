@@ -79,21 +79,21 @@ export async function calibrate(page) {
 
 export const keyboardShown = () => /mInputShown=true/.test(sh('dumpsys input_method'));
 
-/** Find a node of the current screen by its text (uiautomator) and tap its centre. */
-export function tapText(text, { exact = true } = {}) {
-  sh('uiautomator dump /sdcard/ui.xml >/dev/null 2>&1');
-  const xml = adb('exec-out', 'cat', '/sdcard/ui.xml');
-  const re = /<node[^>]*?text="([^"]*)"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/g;
-  let m;
-  const seen = [];
-  while ((m = re.exec(xml))) {
-    if (m[1]) seen.push(m[1]);
-    if (exact ? m[1] === text : m[1].includes(text)) {
-      sh(`input tap ${Math.round((+m[2] + +m[4]) / 2)} ${Math.round((+m[3] + +m[5]) / 2)}`);
-      return true;
-    }
+/**
+ * Find a node of the current screen by its text and tap it, through Playwright's own device
+ * driver. (`adb shell uiautomator dump` must not be used here: only one UiAutomation client can
+ * be registered, so it knocks out Playwright's driver and every later page call fails with
+ * "Target page, context or browser has been closed".)
+ */
+export async function tapText(device, text, { exact = true, timeout = 2500 } = {}) {
+  const selector = exact ? { text } : { textContains: text };
+  try {
+    await device.wait(selector, { timeout });
+    await device.tap(selector, { timeout });
+    return true;
+  } catch (e) {
+    return { missing: text, why: String(e.message).split('\n')[0].slice(0, 120) };
   }
-  return { missing: text, seen: seen.slice(0, 40) };
 }
 
 export function report() {

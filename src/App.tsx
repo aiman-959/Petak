@@ -1,4 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { initFonts } from './fonts/fonts';
+import { FillHandle } from './ui/FillHandle';
+import { RefHighlights } from './ui/RefHighlights';
 import { useDraw } from './draw/state';
 import './grid/view';
 import { governor } from './device/governor';
@@ -6,8 +9,9 @@ import { doc } from './state/doc';
 import { detectTier } from './device/tier';
 import { isTouchDevice } from './univer/setup';
 import { FormulaBar } from './ui/FormulaBar';
-import { TopBar, SheetTabs, BottomBar, SidePanel, Overlays } from './ui/Chrome';
-import { NumFmtDialog, CfDialog, FindDialog, FunctionsDialog, AboutDialog } from './ui/Dialogs';
+import { TopBar, SheetTabs, BottomBar, SidePanel, Overlays, PromptDialog } from './ui/Chrome';
+import { NumFmtDialog, CfDialog, FindDialog, FunctionsDialog, AboutDialog, RecentDialog } from './ui/Dialogs';
+import { onLaunchFile } from './io/files';
 import { useKeyboardOpen, useMedia } from './ui/hooks';
 import { ui, useUi } from './ui/store';
 import { prefs } from './state/storage';
@@ -29,6 +33,8 @@ const WhatIfDialog = lazy(() => import('./features/AnalysisDialogs').then((m) =>
 const SlicersDialog = lazy(() => import('./features/AnalysisDialogs').then((m) => ({ default: m.SlicersDialog })));
 const DataModelDialog = lazy(() => import('./datamodel/DataModelDialog'));
 const DrawLayer = lazy(() => import('./draw/DrawLayer'));
+const FontsDialog = lazy(() => import('./fonts/FontsDialog'));
+const PrintDialog = lazy(() => import('./features/PrintDialog'));
 const ValidationDialog = lazy(() => import('./review/ReviewDialogs').then((m) => ({ default: m.ValidationDialog })));
 
 export default function App() {
@@ -39,6 +45,7 @@ export default function App() {
   const dialog = useUi((s) => s.dialog);
   const theme = useUi((s) => s.theme);
   const drawing = useDraw((s) => s.active);
+  const touchUi = ready && !!doc.input; // the fill grip is for fingers; a mouse has Univer's own fill handle
 
   useEffect(() => {
     let cancelled = false;
@@ -52,10 +59,14 @@ export default function App() {
       (window as unknown as { __booted?: boolean }).__booted = true;
       const q = new URLSearchParams(location.search);
       const mobile = q.has('desktop') ? false : q.has('mobile') || isTouchDevice();
+      await initFonts(() => doc.fontsChanged());
       doc.init(host.current!, mobile);
       const restored = !q.has('fresh') && (await doc.restoreSession().catch(() => false));
       if (!restored) await doc.newWorkbook();
       setReady(true);
+      // a file handed over by another app: at start, and later while the app is running
+      fileActions.openLaunchFile();
+      onLaunchFile(() => fileActions.openLaunchFile());
       console.info(`[tier] ${tier.tier} ram=${tier.ramGb}GB cores=${tier.cores} soc=${tier.soc} hz=${tier.refreshRate}`);
     })();
     return () => {
@@ -128,6 +139,8 @@ export default function App() {
           )}
           {ready && !drawing && <PictureOverlay />}
           {ready && !drawing && <SelectionBar />}
+          {ready && !drawing && touchUi && <FillHandle />}
+          {ready && !drawing && <RefHighlights />}
         </div>
         {tablet && ready && <SidePanel />}
       </div>
@@ -152,11 +165,15 @@ export default function App() {
           {dialog === 'slicers' && <SlicersDialog />}
           {dialog === 'datamodel' && <DataModelDialog />}
           {dialog === 'link' && <LinkDialog />}
+          {dialog === 'fonts' && <FontsDialog />}
+          {dialog === 'recent' && <RecentDialog />}
+          {dialog === 'pagesetup' && <PrintDialog />}
           {dialog === 'picture' && <PictureViewer />}
         </Suspense>
       )}
       {ready && <ContextMenu />}
       <AskDialog />
+      <PromptDialog />
       <Overlays />
       {!ready && (
         <div className="splash" role="status" aria-label="Loading Petak">

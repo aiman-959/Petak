@@ -205,6 +205,29 @@ export function scrollTo(v: ViewInfo, sx: number, sy: number) {
     offsetY: Math.max(0, y - at(v.rowAcc, r)),
   });
 }
+/**
+ * Thin lines on a stretched canvas (K-08). On Low / Mid tiers the grid canvas has fewer pixels
+ * than the screen and is stretched by a non-whole factor (e.g. 2.625 / 2). A border that is one
+ * canvas pixel wide is then smeared to a faint grey line, or seems to vanish between coloured
+ * cells. Borders and grid lines are therefore drawn one *screen* pixel wide: the canvas line
+ * width is multiplied by the stretch. Idempotent; call when a render unit exists.
+ */
+export function fixThinLines(stretch: number) {
+  if (stretch <= 1.02) return;
+  try {
+    const ctx = (renderUnit() as unknown as { engine: { getCanvas(): { getContext(): object } } } | null)?.engine.getCanvas().getContext();
+    const proto = ctx && (Object.getPrototypeOf(ctx) as { setLineWidthByPrecision?: (w: number) => void; __petakLines?: boolean; __petakOrig?: (w: number) => void });
+    if (!proto?.setLineWidthByPrecision || proto.__petakLines) return;
+    const orig = proto.setLineWidthByPrecision;
+    proto.setLineWidthByPrecision = function (this: unknown, w: number) {
+      orig.call(this, w * stretch);
+    };
+    proto.__petakLines = true;
+    proto.__petakOrig = orig; // tests switch the fix off to prove they see the difference
+  } catch (e) {
+    console.warn('line fix not applied', e);
+  }
+}
 /** Sheet position at the main pane's top-left corner. */
 export const mainOrigin = (v: ViewInfo) => ({ x: v.frozenW / v.zoom + v.scrollX, y: v.frozenH / v.zoom + v.scrollY });
 

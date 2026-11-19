@@ -11,7 +11,7 @@ import type { CfEntry, CfRule, LoadChunk } from '../types';
 import { META_SHEET, LEGACY_META_SHEETS, readMetaRows } from '../meta';
 import { Pkg, relKind, type Rel } from './package';
 import { attr, attrs, child, children, childrenNamed, decodeXlText, decodeXml, root, textOf } from './xml';
-import { parseStyles, parseTheme, colorOf, type ParsedStyles, type Theme } from './styles';
+import { fontStyle, parseStyles, parseTheme, colorOf, type ParsedStyles, type Theme } from './styles';
 import { fromFileFormula, shiftFormula, translateStructured, type TableInfo } from './formulaText';
 import { readDrawings, readCellImages, type PictureDef } from './drawings';
 import type { LoadResultX, NameDef, OoxmlMeta } from './types';
@@ -36,6 +36,8 @@ export interface ParsedOoxml {
 interface SharedStrings {
   text: string[];
   rich: boolean[];
+  /** the <si> body of each rich string, to show its runs (H-07) */
+  richBody: Map<number, string>;
 }
 
 /** Some writers prefix every element (`<x:row>`); normalise so the scanner can use plain names. */
@@ -47,7 +49,7 @@ function unprefix(xml: string): string {
 }
 
 function readShared(xml: string | undefined): SharedStrings {
-  const out: SharedStrings = { text: [], rich: [] };
+  const out: SharedStrings = { text: [], rich: [], richBody: new Map() };
   if (!xml) return out;
   xml = unprefix(xml);
   let pos = 0;
@@ -71,10 +73,64 @@ function readShared(xml: string | undefined): SharedStrings {
       const b = body.lastIndexOf('</t>');
       out.text.push(body.charCodeAt(a - 1) === 47 || b < 0 ? '' : decodeXlText(body.slice(a + 1, b)));
     } else out.text.push(textOf(body));
+    if (rich) out.richBody.set(out.text.length - 1, body);
     out.rich.push(rich);
     pos = e + 5;
   }
   return out;
+}
+
+/**
+ * A rich shared string as a Univer cell document: the text with one run per <r>, each with its
+ * own font, size, colour, bold / italic / underline / strike, super- or subscript.
+ * Not built for multi-line strings (kept as plain text); undefined when there is nothing to show.
+ */
+const richCache = new WeakMap<object, Map<number, unknown>>();
+export function richDoc(p: { shared: SharedStrings; theme: Theme }, si: number): unknown {
+  let cache = richCache.get(p.shared);
+  if (!cache) richCache.set(p.shared, (cache = new Map()));
+  if (cache.has(si)) return cache.get(si);
+  const body = p.shared.richBody.get(si);
+  let doc: unknown;
+  if (body) {
+    const runs: Array<{ st: number; ed: number; ts: Record<string, unknown> }> = [];
+    let text = '';
+    const re = /<r>([\s\S]*?)<\/r>|<r\s[^>]*>([\s\S]*?)<\/r>/g;
+    let m: RegExpExecArray | null;
+    let styled = false;
+    while ((m = re.exec(body))) {
+      const inner = m[1] ?? m[2] ?? '';
+      const t = textOf(inner);
+      if (!t) continue;
+      const rp = /<rPr>([\s\S]*?)<\/rPr>/.exec(inner)?.[1];
+      const ts = rp ? (fontStyle(rp, p.theme) as Record<string, unknown>) : {};
+      if (Object.keys(ts).length) styled = true;
+      runs.push({ st: text.length, ed: text.length + t.length, ts });
+      text += t;
+    }
+    if (styled && text && text === p.shared.text[si] && !/[\r\n]/.test(text)) {
+      doc = {
+        id: 'r' + si,
+        documentStyle: {},
+        body: { dataStream: text + '\r\n', textRuns: runs, paragraphs: [{ startIndex: text.length }], sectionBreaks: [{ startIndex: text.length + 1 }] },
+      };
+    }
+  }
+  cache.set(si, doc);
+  return doc;
+}
+
+/**
+ * The rich document for one cell: runs without their own formatting take the cell's font
+ * (as in Excel), runs with formatting override it; the paragraph follows the cell's alignment.
+ */
+export function richForCell(doc: unknown, style: Record<string, unknown> | undefined, def: { name?: string; size?: number }): unknown {
+  const d = JSON.parse(JSON.stringify(doc)) as { body: { textRuns: Array<{ ts: Record<string, unknown> }>; paragraphs: Array<Record<string, unknown>> } };
+  const base: Record<string, unknown> = { ff: def.name ?? 'Calibri', fs: def.size ?? 11 };
+  for (const k of ['ff', 'fs', 'bl', 'it', 'cl', 'ul', 'st']) if (style?.[k] !== undefined) base[k] = style[k];
+  for (const r of d.body.textRuns) r.ts = { ...base, ...r.ts };
+  if (style?.ht) d.body.paragraphs[0].paragraphStyle = { horizontalAlign: style.ht };
+  return d;
 }
 
 export function parseOoxml(buf: ArrayBuffer, fileName: string): ParsedOoxml {
@@ -422,6 +478,8 @@ export function* streamOoxml(p: ParsedOoxml, chunkRows: number): Generator<LoadC
               cell.v = p.shared.text[si];
               cell.t = 1;
               if (p.shared.rich[si]) (custom ??= {}).si = si;
+              const doc = p.shared.rich[si] ? richDoc(p, si) : undefined;
+              if (doc) cell.p = richForCell(doc, ((sIdx && p.styles.styles['x' + sIdx]) || undefined) as Record<string, unknown> | undefined, p.styles.defaultFont) as never;
             }
           } else if (type === 'inlineStr') {
             const is = body.indexOf('<is');

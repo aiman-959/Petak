@@ -146,7 +146,7 @@ const has = (xml: string, name: string) => {
 };
 const tagOf = (xml: string, name: string) => new RegExp(`<(?:\\w+:)?${name}\\b[^>]*>`).exec(xml)?.[0];
 
-function fontStyle(xml: string, theme: Theme, idx: string[]): IStyleData {
+export function fontStyle(xml: string, theme: Theme, idx: string[] = INDEXED): IStyleData {
   const s: IStyleData = {};
   const name = val(xml, 'name') ?? val(xml, 'rFont');
   if (name) s.ff = name;
@@ -425,7 +425,9 @@ export class StyleWriter {
         edits.push({ at, del: 0, text: `<${kind} count="${add.length}">${add.join('')}</${kind}>` });
       }
     }
-    edits.sort((a, b) => b.at - a.at);
+    // at the same offset the collection being replaced goes first, so a new collection inserted
+    // there (numFmts before the fonts of a blank package) lands in front of it, not inside (F-08)
+    edits.sort((a, b) => b.at - a.at || b.del - a.del);
     for (const e of edits) xml = xml.slice(0, e.at) + e.text + xml.slice(e.at + e.del);
     return xml;
   }

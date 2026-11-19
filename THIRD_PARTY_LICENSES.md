@@ -380,3 +380,7 @@ Some packages listed (for example the Node-only parts of ExcelJS's zip reader) a
 | zrender | 6.1.0 | BSD-3-Clause | https://github.com/ecomfe/zrender |
 
 Full licence texts are in each package's directory under `node_modules/` and in the upstream repositories above.
+
+## Fonts shipped in the app
+
+Carlito, Caladea, Arimo, Tinos and Cousine (via the `@fontsource/*` packages), all under the SIL Open Font License 1.1. They stand in for Calibri, Cambria, Arial, Times New Roman and Courier New, whose character widths they match.

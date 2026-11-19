@@ -77,6 +77,13 @@ async function run(throttle) {
     return { last: ws.getLastRow(), total: ws.getRange('T2').getValue(), sum: ws.getRange('E2:S2').getValues()[0].reduce((a, b) => a + b, 0) };
   });
 
+  // ---- the whole session is saved once after a file opens (K-07: Android may end the app)
+  const tFull = await page.evaluate(async () => {
+    const a = performance.now();
+    await window.__doc.autosave();
+    return Math.round(performance.now() - a);
+  });
+
   // ---- recalc latency: edit one cell, wait for its dependent formula
   if (process.env.DEBUG) console.log('   edit at', ((Date.now() % 1e6) / 1000).toFixed(1));
   const tr0 = Date.now();
@@ -133,8 +140,10 @@ async function run(throttle) {
   const p95 = frames[Math.floor(frames.length * 0.95)];
   const janky = frames.filter((f) => f > 25).length;
 
-  // ---- memory
+  // ---- memory, after a full garbage collection (canvas memory is freed only by the collector)
   await page.waitForTimeout(500);
+  await cdp.send('HeapProfiler.collectGarbage');
+  await page.waitForTimeout(800);
   const metrics = Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((m) => [m.name, m.value]));
   const rss = rendererRssMb();
   await browser.close();
@@ -147,6 +156,7 @@ async function run(throttle) {
     loadAllMs: tFormulas,
     recalcMs: tRecalc,
     autosaveMs: tAutosave,
+    fullSaveMs: tFull,
     restoreMs: tRestore,
     restoredOk,
     scrollMs,
@@ -183,14 +193,15 @@ Tier per column: ${results.map((r) => `**${r.tier}**`).join(' / ')} (High = 10k-
 | Load: file picked → grid shows all rows | ${results.map((r) => `${(r.loadGridMs / 1000).toFixed(2)} s`).join(' | ')} |
 | Load: … → all ${ROWS.toLocaleString()} formulas computed | ${results.map((r) => `${(r.loadAllMs / 1000).toFixed(2)} s`).join(' | ')} |
 | Edit one cell → dependent formula updated | ${results.map((r) => `${r.recalcMs} ms`).join(' | ')} |
+| Whole session saved once after opening (K-07) | ${results.map((r) => `${r.fullSaveMs} ms`).join(' | ')} |
 | Autosave (incremental, after the edit) | ${results.map((r) => `${r.autosaveMs} ms`).join(' | ')} |
 | App restart → session restored with all formulas | ${results.map((r) => `${(r.restoreMs / 1000).toFixed(2)} s${r.restoredOk ? '' : ' (**data mismatch**)'}`).join(' | ')} |
 | Scroll: frames measured during touch flings | ${results.map((r) => r.frames).join(' | ')} |
 | Scroll: average FPS | ${results.map((r) => r.fps).join(' | ')} |
 | Scroll: 95th percentile frame time | ${results.map((r) => `${r.p95FrameMs} ms`).join(' | ')} |
 | Scroll: frames slower than 25 ms | ${results.map((r) => `${r.jankyFrames} (${r.jankPct} %)`).join(' | ')} |
-| Memory: main-thread JS heap after load | ${results.map((r) => `${r.heapMb} MB (empty app: ${r.heapBeforeMb} MB)`).join(' | ')} |
-| Memory: renderer process RSS (main + workers) | ${results.map((r) => (r.rendererRssMb ? `${r.rendererRssMb} MB` : 'n/a')).join(' | ')} |
+| Memory: main-thread JS heap after load (after garbage collection) | ${results.map((r) => `${r.heapMb} MB (empty app: ${r.heapBeforeMb} MB)`).join(' | ')} |
+| Memory: renderer process RSS (main + workers, after garbage collection) | ${results.map((r) => (r.rendererRssMb ? `${r.rendererRssMb} MB` : 'n/a')).join(' | ')} |
 | Formula results correct | ${results.map((r) => (r.formulaOk ? 'yes' : '**no**')).join(' | ')} |
 
 Notes

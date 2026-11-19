@@ -177,7 +177,21 @@ export function writeOoxml(data: IWorkbookData, opts: WriteOptions, onProgress?:
   // ---- styles and strings
   const stylesPart = partOf('styles') ?? `${wbDir}styles.xml`;
   const themePart = partOf('theme');
-  const origStylesXml = pkg.get(stylesPart);
+  let origStylesXml = pkg.get(stylesPart);
+  if (!opts.original && origStylesXml) {
+    // A workbook that did not come from an .xlsx (an old .xls, .ods, CSV) keeps its own default
+    // font (Arial 10 for most .xls) instead of the blank package's Calibri 11.
+    const def = (data as { defaultStyle?: { ff?: string; fs?: number } }).defaultStyle;
+    if (def?.ff || def?.fs) {
+      origStylesXml = origStylesXml.replace(/<font>.*?<\/font>/, (f) =>
+        f
+          .replace(/<sz val="[^"]*"\/>/, `<sz val="${def.fs ?? 11}"/>`)
+          .replace(/<name val="[^"]*"\/>/, `<name val="${encodeXml(def.ff ?? 'Calibri')}"/>`)
+          .replace(def.ff && def.ff !== 'Calibri' ? /<family val="2"\/><scheme val="minor"\/>/ : /$^/, ''),
+      );
+      pkg.set(stylesPart, origStylesXml);
+    }
+  }
   const parsedStyles = parseStyles(origStylesXml ? unprefix(origStylesXml) : undefined, parseTheme(themePart ? pkg.get(themePart) : undefined));
   const styleWriter = new StyleWriter(origStylesXml ? unprefix(origStylesXml) : undefined, parsedStyles.baseline, parsedStyles.defaultFont);
   const mdw = maxDigitWidth(parsedStyles.defaultFont);
@@ -358,6 +372,9 @@ export function writeOoxml(data: IWorkbookData, opts: WriteOptions, onProgress?:
           const orig = rc.ht !== undefined ? Math.round(((+String(rc.ht) * 4) / 3) * 100) / 100 : NaN;
           ra += ` ht="${Math.abs(orig - rd.h) < 0.01 ? rc.ht : Math.round(rd.h * 0.75 * 100) / 100}"`;
           if (rc.ch || rc.ht === undefined || Math.abs(orig - rd.h) >= 0.01) ra += ' customHeight="1"';
+        } else if (rd.h !== undefined && rd.h !== null && rd.ia === undefined && Math.abs(rd.h - (sd.defaultRowHeight ?? 20)) >= 0.5) {
+          // a height fitted to the content where the file came from (.ods): kept, and Excel may fit it again
+          ra += ` ht="${Math.round(rd.h * 0.75 * 100) / 100}"`;
         }
         if (rd.hd) ra += ' hidden="1"';
         const rxf = rd.s ? xfOf(rd.s) : 0;
@@ -380,7 +397,11 @@ export function writeOoxml(data: IWorkbookData, opts: WriteOptions, onProgress?:
     // ---- regenerated elements
     set('dimension', `<dimension ref="${maxR < 0 ? 'A1' : rectToA1({ r0: minR, c0: minC, r1: maxR, c1: maxC })}"/>`);
     if (!same(id, 'view') || !els.has('sheetViews')) set('sheetViews', sheetViews(els.get('sheetViews')?.[0], sd));
-    if (!isOriginal && !els.has('sheetFormatPr')) set('sheetFormatPr', `<sheetFormatPr defaultRowHeight="${Math.round((sd.defaultRowHeight ?? 20) * 0.75 * 100) / 100}"/>`);
+    if (!isOriginal) {
+      // keep the sheet's default column width (88 px for a sheet from .ods / CSV, Excel reads 64 px otherwise)
+      const dcw = sd.defaultColumnWidth && Math.round(sd.defaultColumnWidth) !== Math.round(8.43 * mdw + 5) ? ` defaultColWidth="${Math.trunc((sd.defaultColumnWidth / mdw) * 256) / 256}"` : '';
+      set('sheetFormatPr', `<sheetFormatPr${dcw} defaultRowHeight="${Math.round((sd.defaultRowHeight ?? 20) * 0.75 * 100) / 100}"/>`);
+    }
     if (!same(id, 'cols')) set('cols', colsXml(sd.columnData as never, mdw, xfOf));
     const merges = sd.mergeData ?? [];
     set('mergeCells', merges.length ? `<mergeCells count="${merges.length}">${merges.map((m) => `<mergeCell ref="${rectToA1({ r0: m.startRow, c0: m.startColumn, r1: m.endRow, c1: m.endColumn })}"/>`).join('')}</mergeCells>` : null);

@@ -14,7 +14,8 @@ import {
 } from '@univerjs/sheets';
 import type { FRange } from '@univerjs/sheets/facade';
 import { doc, type FileFormat } from '../state/doc';
-import { pickFile, shareFile } from '../io/files';
+import { pickFile, reopen, takeLaunchFile, type OpenedFile, shareFile } from '../io/files';
+import { recent, type RecentFile } from '../io/recent';
 import { guard, ui } from './store';
 
 const exec = (id: string, params?: object) => doc.api.executeCommand(id, params);
@@ -28,22 +29,97 @@ export function activeRect(): IRange {
 }
 
 // -------------------------------------------------------------- file
+/**
+ * Before the open workbook is replaced: with unsaved changes ask Save / Don't save / Cancel.
+ * Returns false when the user cancels (or cancels the Save).
+ */
+export async function leaveCurrent(what = 'continue'): Promise<boolean> {
+  if (!doc.snapshot.dirty) return true;
+  const a = await ui.ask(`“${doc.snapshot.file.name}” has unsaved changes.\nSave them before you ${what.charAt(0).toLowerCase() + what.slice(1)}?`, [
+    { id: 'cancel', label: 'Cancel' },
+    { id: 'discard', label: "Don't save", kind: 'danger' },
+    { id: 'save', label: 'Save', kind: 'primary' },
+  ]);
+  if (a === 'discard') return true;
+  if (a !== 'save') return false;
+  try {
+    await doc.save();
+  } catch (e) {
+    if ((e as DOMException)?.name === 'AbortError' || /cancel/i.test((e as Error)?.message ?? '')) return false;
+    throw new Error(`Could not save “${doc.snapshot.file.name}”: ${(e as Error)?.message ?? e}. Nothing was closed.`);
+  }
+  return !doc.snapshot.dirty;
+}
+/** What went wrong, in words a person can act on. */
+export function openError(name: string, e: unknown): Error {
+  const raw = String((e as Error)?.message ?? e);
+  const ext = (/\.([a-z0-9]+)$/i.exec(name)?.[1] ?? '').toLowerCase();
+  let why = raw;
+  if (/password|encrypt/i.test(raw)) why = 'it is protected with a password. Remove the password in Excel and try again';
+  else if (!['xlsx', 'xlsm', 'xls', 'ods', 'csv', 'tsv', 'txt'].includes(ext) && /zip|central directory|unsupported|not a|invalid|corrupt/i.test(raw)) why = `“.${ext || '?'}” is not a spreadsheet Petak can read (xlsx, xlsm, xls, ods, csv)`;
+  else if (/zip|central directory|end of data|unexpected end|corrupt|invalid/i.test(raw)) why = 'the file is damaged or incomplete (' + raw + ')';
+  else if (/memory|allocation/i.test(raw)) why = 'it is too large for this device’s memory';
+  return new Error(`Could not open “${name}”: ${why}. The workbook you had open is unchanged.`);
+}
+const remember = () => void recent.add(doc.snapshot.file);
+async function openFile(f: OpenedFile) {
+  if (!f.buffer.byteLength) throw new Error(`Could not open “${f.name}”: the file is empty (0 bytes).`);
+  let ok = false;
+  try {
+    ok = await doc.open(f, { progress: ui.progress, confirm: ui.confirm });
+  } catch (e) {
+    throw openError(f.name, e);
+  }
+  if (!ok) return;
+  void recent.add({ name: f.name, uri: f.uri, handle: f.handle });
+  // old .xls and .ods: say what is and is not shown (and that Save writes a new .xlsx)
+  const fmt = doc.snapshot.file.format;
+  const old = fmt === 'xls' || fmt === 'ods' ? doc.loadWarnings.find((w) => /\.xls|OpenDocument/.test(w)) : undefined;
+  ui.toast(`Opened ${f.name}` + (old ? `. ${old}` : doc.fontNotice ? `. ${doc.fontNotice}` : ''));
+}
+
 export const fileActions = {
   newFile: () =>
     guard(async () => {
-      if (doc.snapshot.dirty && !(await ui.confirm('Discard unsaved changes and start a new workbook?'))) return;
+      if (!(await leaveCurrent())) return;
       await doc.newWorkbook();
     }),
   open: () =>
     guard(async () => {
-      if (doc.snapshot.dirty && !(await ui.confirm('Discard unsaved changes and open another file?'))) return;
+      if (!(await leaveCurrent())) return;
       const f = await pickFile();
-      if (!f) return;
-      const ok = await doc.open(f, { progress: ui.progress, confirm: ui.confirm });
-      if (ok) ui.toast(`Opened ${f.name}`);
+      if (f) await openFile(f);
     }),
-  save: () => guard(() => doc.save(), 'Saved'),
-  saveAs: (fmt: FileFormat) => guard(() => doc.saveAs(fmt), 'Saved'),
+  /** A file handed over by another app ("Open with Petak"), at start or while running. */
+  openLaunchFile: () =>
+    guard(async () => {
+      const f = await takeLaunchFile();
+      if (!f) return;
+      if (!(await leaveCurrent(`Open “${f.name}”`))) return;
+      await openFile(f);
+    }),
+  openRecent: (r: RecentFile) =>
+    guard(async () => {
+      if (!(await leaveCurrent())) return;
+      let f: OpenedFile;
+      try {
+        f = await reopen(r);
+      } catch (e) {
+        await recent.remove(r);
+        throw new Error(`“${r.name}” could not be opened again (moved, deleted or permission gone). It was removed from the list. ${(e as Error).message ?? ''}`.trim());
+      }
+      await openFile(f);
+    }),
+  save: () => guard(() => doc.save().then(remember), 'Saved'),
+  saveAs: (fmt: FileFormat) =>
+    guard(async () => {
+      // a CSV file holds one sheet: say which one, and that the others are not in it (M-07)
+      const sheet = doc.wb.getActiveSheet().getSheetName();
+      const others = doc.wb.getSheets().filter((s) => !s.isSheetHidden()).length - 1;
+      await doc.saveAs(fmt);
+      remember();
+      ui.toast(fmt === 'csv' && others > 0 ? `Saved “${sheet}” as CSV. A CSV file holds one sheet: the other ${others} ${others === 1 ? 'sheet is' : 'sheets are'} not in it.` : 'Saved');
+    }),
   share: () =>
     guard(async () => {
       const fmt = doc.snapshot.file.format === 'xlsm' ? 'xlsm' : 'xlsx';
@@ -128,10 +204,15 @@ export const data = {
     const region = dataRegion();
     const rect = region.getRange();
     const ws = doc.wb.getActiveSheet();
-    // keep a header row in place when the first row looks like text headers over numeric data
-    const first = ws.getRange(rect.startRow, col).getValue();
-    const second = ws.getRange(Math.min(rect.startRow + 1, rect.endRow), col).getValue();
-    const hasHeader = typeof first === 'string' && typeof second !== 'string' && rect.endRow > rect.startRow;
+    // keep a header row in place (Excel's guess: see hasHeaderRow)
+    const rows = region.getValues() as unknown[][];
+    const w = rect.endColumn - rect.startColumn + 1;
+    const styleOf = (r: number) => ws.getRange(r, rect.startColumn, 1, w).getCellStyleData() as { bl?: number; bg?: { rgb?: string } } | null;
+    const s0 = styleOf(rect.startRow);
+    const s1 = rect.endRow > rect.startRow ? styleOf(rect.startRow + 1) : null;
+    const styled = !!s0 && ((!!s0.bl && !s1?.bl) || (!!s0.bg?.rgb && s0.bg.rgb !== s1?.bg?.rgb));
+    const frozen = ws.getFrozenRows() > 0 && rect.startRow === ws.getFrozenRows() - 1;
+    const hasHeader = rect.endRow > rect.startRow && (frozen || hasHeaderRow(rows, styled));
     const target = hasHeader ? ws.getRange(rect.startRow + 1, rect.startColumn, rect.endRow - rect.startRow, rect.endColumn - rect.startColumn + 1) : region;
     target.sort({ column: col, ascending: asc });
   },
@@ -156,6 +237,24 @@ export const data = {
   unfreeze: () => doc.wb.getActiveSheet().cancelFreeze(),
 };
 
+/**
+ * Does the first row of a block look like column headings? Excel's guess: yes when it is
+ * formatted differently (bold / filled) or when some column has text on top and only numbers,
+ * dates or TRUE/FALSE below; never when the first row holds a number.
+ */
+export function hasHeaderRow(rows: unknown[][], firstRowStyled = false): boolean {
+  if (rows.length < 2) return false;
+  const [head, ...body] = rows;
+  const filled = (v: unknown) => v !== null && v !== undefined && v !== '';
+  if (!head.some(filled) || head.some((v) => typeof v === 'number')) return false;
+  if (firstRowStyled) return true;
+  return head.some((h, c) => {
+    if (typeof h !== 'string' || !h) return false;
+    const below = body.map((r) => r[c]).filter(filled);
+    return below.length > 0 && below.every((v) => typeof v !== 'string');
+  });
+}
+
 // -------------------------------------------------------------- sheets
 export const sheets = {
   add: () => {
@@ -170,9 +269,20 @@ export const sheets = {
   rename: async (id: string) => {
     const s = doc.wb.getSheetBySheetId(id);
     if (!s) return;
-    const name = prompt('Sheet name', s.getSheetName());
-    if (name && name.trim()) guard(() => s.setName(name.trim().slice(0, 31)));
+    const others = doc.wb.getSheets().filter((x) => x.getSheetId() !== id).map((x) => x.getSheetName());
+    const name = await ui.promptText('Rename sheet', 'Sheet name', s.getSheetName(), (v) => sheetNameError(v, others));
+    if (name !== null && name.trim() !== s.getSheetName()) guard(() => s.setName(name.trim()));
   },
+  /** Move a sheet one place left (-1) or right (+1) among the tabs. */
+  move: (id: string, by: -1 | 1) =>
+    guard(() => {
+      const wb = doc.wb;
+      const list = wb.getSheets();
+      const i = list.findIndex((x) => x.getSheetId() === id);
+      const j = i + by;
+      if (i < 0 || j < 0 || j >= list.length) return;
+      wb.moveSheet(list[i], j);
+    }),
   remove: async (id: string) => {
     if (doc.wb.getNumSheets() <= 1) return ui.toast('A workbook needs at least one sheet');
     if (await ui.confirm('Delete this sheet? You can undo.')) doc.wb.deleteSheet(id);
@@ -182,6 +292,19 @@ export const sheets = {
     if (s) doc.wb.duplicateSheet(s);
   },
 };
+
+/** Excel's rules for a sheet name; null when the name is fine. Pure: unit-tested. */
+export function sheetNameError(raw: string, others: string[]): string | null {
+  const v = raw.trim();
+  if (!v) return 'A sheet name cannot be empty.';
+  if (v.length > 31) return `A sheet name can have at most 31 characters (this one has ${v.length}).`;
+  const bad = /[:\\/?*[\]]/.exec(v);
+  if (bad) return `A sheet name cannot contain “${bad[0]}”. Not allowed: : \\ / ? * [ ]`;
+  if (v.startsWith("'") || v.endsWith("'")) return 'A sheet name cannot begin or end with an apostrophe.';
+  if (v.toLowerCase() === 'history') return '“History” is reserved by Excel.';
+  if (others.some((o) => o.toLowerCase() === v.toLowerCase())) return `There is already a sheet called “${v}”.`;
+  return null;
+}
 
 /** Parse what the user typed in the formula bar into a cell value. */
 export function parseInput(text: string): { v: string | number | boolean; pattern?: string } | { f: string } {
@@ -202,9 +325,12 @@ export function commitInput(text: string, target?: FRange) {
   const cell = r.getCellData();
   const p = parseInput(text);
   if (text === '') r.clearContent();
-  else if ('f' in p) r.setValue({ f: p.f } as never);
+  // a cell formatted as Text keeps exactly what was typed, as in Excel ("0012", "=A1", "1/2")
+  else if (r.getNumberFormat() === '@') r.setValue({ v: text, t: 1 /* STRING */, ...(cell?.p ? { p: null } : {}) } as never);
+  else if ('f' in p) r.setValue((cell?.p ? { f: p.f, p: null } : { f: p.f }) as never);
   else {
-    r.setValue(p.v as never);
+    // typing over a rich-text cell replaces its formatted runs too (they would keep showing the old text)
+    r.setValue((cell?.p ? { v: p.v, p: null } : p.v) as never);
     if (p.pattern && !cell?.s) r.setNumberFormat(p.pattern);
   }
 }

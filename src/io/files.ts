@@ -76,6 +76,32 @@ export async function pickFile(accept = ACCEPT): Promise<OpenedFile | null> {
   });
 }
 
+/** The file handed over by another app ("Open with Petak", "Share"), or null. Android only. */
+export async function takeLaunchFile(): Promise<OpenedFile | null> {
+  if (!isNative()) return null;
+  const d = await Documents.takeLaunchFile();
+  if (!d.path) return null;
+  return { name: d.name ?? 'file.xlsx', uri: d.uri, buffer: await readCached(d.path) };
+}
+/** Call `fn` whenever another app hands a file to the running app. */
+export function onLaunchFile(fn: () => void) {
+  if (isNative()) void Documents.addListener('openFile', fn);
+}
+/** Open a file again from its saved place (recent files). Android: by URI; browser: by handle. */
+export async function reopen(target: { uri?: string; handle?: FileSystemFileHandle; name: string }): Promise<OpenedFile> {
+  if (target.uri && isNative()) {
+    const d = await Documents.read({ uri: target.uri });
+    return { name: d.name || target.name, uri: target.uri, buffer: await readCached(d.path) };
+  }
+  if (target.handle) {
+    const h = target.handle as FileSystemFileHandle & { requestPermission?: (o: { mode: string }) => Promise<string> };
+    if (h.requestPermission && (await h.requestPermission({ mode: 'read' })) !== 'granted') throw new Error('Permission to read the file was not given');
+    const f = await h.getFile();
+    return { name: f.name, buffer: await f.arrayBuffer(), handle: h };
+  }
+  throw new Error('This file can no longer be reached from here. Open it with the Open button.');
+}
+
 /** Re-read a file by its stored URI (used by transform "Refresh"). */
 export async function rereadUri(uri: string): Promise<ArrayBuffer> {
   const doc = await Documents.read({ uri });
@@ -93,8 +119,13 @@ export async function saveFile(
   if (isNative()) {
     const b64 = await blobToBase64(blob);
     if (target?.uri) {
-      await Documents.write({ uri: target.uri, data: b64 });
-      return { uri: target.uri, name };
+      try {
+        await Documents.write({ uri: target.uri, data: b64 });
+        return { uri: target.uri, name };
+      } catch (e) {
+        // opened through "Open with" or a read-only place: ask where to put the file instead
+        console.warn('save in place failed, asking for a place', e);
+      }
     }
     return Documents.create({ name, mimeType: mime, data: b64 });
   }

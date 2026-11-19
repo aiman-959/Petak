@@ -3,27 +3,46 @@
  * Observes behaviour only; it never fails the build. Output: device-out/*.png + device-report.json.
  *   node tests/device/audit.mjs <debug.apk> <fixtures dir>
  */
-import { adb, sh, sleep, attach, launch, screencap, calibrate, keyboardShown, tapText, report, PKG } from './lib.mjs';
+import { adb, sh, sleep, attach, launch, screencap, calibrate, keyboardShown, report, PKG } from './lib.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const [apk, fixtures = 'tests/fixtures/files'] = process.argv.slice(2);
 const R = report();
 if (apk) adb('install', '-r', '-g', apk);
 sh('mkdir -p /sdcard/Download');
 for (const f of fs.readdirSync(fixtures)) if (fs.statSync(path.join(fixtures, f)).isFile()) adb('push', path.join(fixtures, f), '/sdcard/Download/' + f);
+/** Which content providers of other apps Petak's process holds right now, plus its own font-related log lines. */
+const providerLinks = () => {
+  const safe = (f) => { try { return String(f()).trim(); } catch (e) { return 'ERR ' + String(e.message).slice(0, 120); } };
+  const links = safe(() => sh(`dumpsys activity providers | awk '/ContentProviderRecord\\{/ {rec=$0} /->.*${PKG}/ {print rec}' | sed 's/.*ContentProviderRecord{[^ ]* [^ ]* //' | sort -u || true`));
+  const pid = safe(() => sh(`pidof ${PKG}`));
+  const log = /^\d+$/.test(pid) ? safe(() => sh(`logcat -d --pid=${pid} | grep -iE "font|emoji|gms" | grep -viE "Davey|OpenGLRenderer" | tail -8 || true`)) : '';
+  return { pid, links: links.split('\n').filter(Boolean), log: log.slice(0, 1200) };
+};
 sh(`am force-stop ${PKG}`);
 launch();
-await sleep(6000);
-const { page } = await attach();
+await sleep(700);
+await R.check('provider links 0.7 s after launch (native start-up, WebView barely loaded)', providerLinks);
+await sleep(5300);
+let { page } = await attach();
 await page.waitForFunction(() => window.__doc?.snapshot?.sheets?.length > 0, null, { timeout: 90000 });
 await sleep(1500);
 screencap('launch');
 
+await R.check('built APK manifest: emoji start-up (fetches a font from Play services) removed? expect emoji: 0', () => {
+  if (!apk) return 'no apk given';
+  const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
+  const bt = fs.readdirSync(path.join(sdk, 'build-tools')).sort().pop();
+  const out = execFileSync(path.join(sdk, 'build-tools', bt, 'aapt2'), ['dump', 'xmltree', '--file', 'AndroidManifest.xml', apk], { encoding: 'utf8', maxBuffer: 16 << 20 });
+  return { emoji: (out.match(/EmojiCompatInitializer/g) || []).length, lines: out.split('\n').filter((l) => /startup|emoji|Initializer|ProfileInstaller|lifecycle/i.test(l)).map((l) => l.trim()).slice(0, 12) };
+});
 await R.check('user agent', () => page.evaluate(() => navigator.userAgent));
 await R.check('devicePixelRatio / viewport', () => page.evaluate(() => [window.devicePixelRatio, innerWidth, innerHeight]));
 await R.check('tier', () => page.evaluate(() => [document.documentElement.dataset.tier, navigator.deviceMemory, navigator.hardwareConcurrency]));
 await R.check('crossOriginIsolated / shared mode', () => page.evaluate(() => [crossOriginIsolated, window.__governor?.stats?.shared]));
+await R.check('provider links after the page loaded, before any font test', providerLinks);
 await R.check('fonts available (Calibri, Carlito, Arial, Liberation Sans, Roboto, Noto Sans CJK SC)', () =>
   page.evaluate(() => ['Calibri', 'Carlito', 'Arial', 'Liberation Sans', 'Roboto', 'Noto Sans CJK SC', 'Times New Roman', 'Courier New'].map((f) => {
     const c = document.createElement('canvas').getContext('2d');
@@ -34,6 +53,7 @@ await R.check('fonts available (Calibri, Carlito, Arial, Liberation Sans, Roboto
   })),
 );
 
+await R.check('provider links after the font-name test (canvas with Calibri, Carlito, Roboto…)', providerLinks);
 const cal = await R.check('touch calibration', async () => {
   const c = await calibrate(page);
   return c;
@@ -100,54 +120,104 @@ await R.check('draw: tap the rectangle to select it', async () => {
   await sleep(800);
   return [await page.evaluate(() => !!document.querySelector('[data-testid=draw-props]')), await drawShapes()];
 });
-await R.check('draw: polyline 3 taps then double tap', async () => {
+await R.check('draw: polyline 3 taps then double tap (expect a 4-point polyline, Done button gone)', async () => {
+  // deselect first: the properties card of the selected rectangle covers the lower part of the sheet
+  await page.evaluate(() => window.__draw.select([]));
   await page.click('[data-testid=draw-tool-polyline]');
-  cal.tap(grid.x + 80, grid.y + 480);
-  await sleep(500);
-  cal.tap(grid.x + 160, grid.y + 520);
-  await sleep(500);
-  cal.tap(grid.x + 240, grid.y + 480);
+  // inside the free drawing area (below the tool bar, above the chips)
+  cal.tap(grid.x + 80, grid.y + 130);
+  await sleep(600);
+  cal.tap(grid.x + 160, grid.y + 180);
+  await sleep(600);
+  cal.tap(grid.x + 240, grid.y + 130);
   await sleep(700);
-  cal.doubleTap(grid.x + 300, grid.y + 520);
+  cal.doubleTap(grid.x + 300, grid.y + 200);
   await sleep(1000);
-  return [await drawShapes(), await page.isVisible('[data-testid=draw-finish]')];
+  return [await drawShapes(), await page.isVisible('[data-testid=draw-finish]'), await page.evaluate(() => document.querySelector('[data-testid=draw-mode-chip]')?.textContent)];
+});
+await R.check('draw: Back button (keyevent 4) leaves drawing mode step by step', async () => {
+  const before = await page.evaluate(() => [window.__draw.get().selected.length, window.__draw.get().active]);
+  sh('input keyevent 4');
+  await sleep(600);
+  const mid = await page.evaluate(() => [window.__draw.get().selected.length, window.__draw.get().active]);
+  sh('input keyevent 4');
+  await sleep(600);
+  return [before, mid, await page.evaluate(() => [window.__draw.get().selected.length, window.__draw.get().active, document.visibilityState])];
 });
 screencap('draw-shapes');
-await page.click('[data-testid=draw-close]').catch(() => {});
+await R.check('Back closes an open dialog instead of leaving the app', async () => {
+  await page.click('[data-testid=menu-more]');
+  await sleep(500);
+  const open = await page.evaluate(() => !!document.querySelector('.bsheet'));
+  sh('input keyevent 4');
+  await sleep(700);
+  return [open, await page.evaluate(() => [!!document.querySelector('.bsheet'), document.visibilityState])];
+});
+await R.check('after Back: is the app still in front? (activity, process, crash log)', async () => {
+  await sleep(2500);
+  const safe = (f) => { try { return String(f()).trim().split('\n').slice(-12).join(' | ').slice(0, 1500); } catch (e) { return 'ERR ' + String(e.message).slice(0, 200); } };
+  return {
+    resumed: safe(() => sh(`dumpsys activity activities | grep -E "ResumedActivity|mFocusedApp" | head -4`)),
+    pid: safe(() => sh(`pidof ${PKG}`)),
+    page: await page.evaluate(() => document.visibilityState).catch((e) => 'page: ' + String(e.message).slice(0, 80)),
+    log: safe(() => sh(`logcat -d -t 400 | grep -iE "FATAL|AndroidRuntime|petak.*(crash|died|kill)|Force finishing|am_finish|WIN DEATH|chromium.*(crash|renderer)|onBackPressed|finishing" | tail -12`)),
+  };
+});
+if (await page.evaluate(() => window.__draw.get().active).catch(() => false)) await page.click('[data-testid=draw-close]').catch(() => {});
 
-// ---- files: picker, second file, "Open with"
-const openViaPicker = async (name) => {
-  await page.click('[data-testid=open]');
-  await sleep(800);
-  const ok = await page.$('[data-testid=confirm-ok]');
-  if (ok) await ok.click();
-  await sleep(3000);
-  let r;
-  for (let i = 0; i < 5; i++) {
-    r = tapText(name);
-    if (r === true) break;
-    await sleep(1500);
+await R.check('provider links after drawing', providerLinks);
+// ---- files: "Open with" from another app (C-04), a second file while one is open (K-07), cold start.
+// The system picker is not driven here: `uiautomator dump` and Playwright's device driver both
+// knock out the page connection on CI. It was checked by hand-driven taps in run 23.
+const mediaId = async (name) => {
+  sh(`am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Download/${name} >/dev/null`);
+  for (let i = 0; i < 6; i++) {
+    await sleep(1200);
+    const q = sh(`content query --uri content://media/external/file --projection _id:_display_name --where "_display_name='${name}'"`);
+    const id = /_id=(\d+)/.exec(q)?.[1];
+    if (id) return id;
   }
-  if (r !== true) {
-    // not in "Recent": open the Downloads root from the drawer
-    tapText('Show roots', { exact: false });
-    await sleep(1000);
-    tapText('Downloads');
-    await sleep(1500);
-    r = tapText(name);
-    if (r !== true) {
-      sh('input keyevent 4');
-      return { picker: sh('dumpsys window | grep mCurrentFocus').trim(), ...r };
-    }
-  }
-  await sleep(6000);
-  return page.evaluate(() => [window.__doc.snapshot.file.name, window.__doc.snapshot.sheets.map((s) => s.name)]);
+  return null;
 };
-await R.check('open roster.xlsx with the system picker', () => openViaPicker('roster.xlsx'));
+const openWith = async (name, mime) => {
+  const id = await mediaId(name);
+  if (!id) return 'no MediaStore row for ' + name;
+  const out = sh(`am start -W -a android.intent.action.VIEW -d content://media/external/file/${id} -t ${mime} --grant-read-uri-permission -n ${PKG}/com.zetl.petak.MainActivity`);
+  await sleep(1500);
+  // unsaved changes in the open workbook: Save / Don't save / Cancel
+  const asked = await page.$('[data-testid=ask-discard]').catch(() => null);
+  const question = asked ? await page.textContent('[data-testid=ask-text]').catch(() => '') : null;
+  if (asked) await asked.click();
+  await sleep(6000);
+  const file = await page.evaluate(() => [window.__doc.snapshot.file.name, window.__doc.snapshot.sheets.map((s) => s.name), document.querySelector('.toast')?.textContent ?? null]).catch((e) => 'page: ' + e.message);
+  const res = { start: out.trim().split('\n').slice(-1)[0], asked: question, file };
+  if (typeof file === 'string') {
+    // Android ended the app (see 'why Android killed Petak'); the intent started it again.
+    // Attach to the new page and report what the restarted app shows.
+    try {
+      ({ page } = await attach());
+      await page.waitForFunction(() => window.__doc?.snapshot?.sheets?.length > 0, null, { timeout: 60000 });
+      await sleep(4000);
+      const again = await page.$('[data-testid=ask-discard]').catch(() => null);
+      if (again) await again.click(), await sleep(5000);
+      res.afterRestart = await page.evaluate(() => [window.__doc.snapshot.file.name, window.__doc.snapshot.sheets.map((s) => s.name)]);
+    } catch (e) {
+      res.afterRestart = 'could not re-attach: ' + String(e.message).slice(0, 100);
+    }
+    const safe = (f) => { try { return String(f()).trim().split('\n').slice(-16).join(' | ').slice(0, 3000); } catch (err) { return 'ERR ' + String(err.message).slice(0, 160); } };
+    res.pid = safe(() => sh(`pidof ${PKG}`));
+    res.mem = safe(() => sh(`dumpsys meminfo ${PKG} | grep -E "TOTAL PSS|TOTAL:" | head -2`));
+    res.log = safe(() => sh(`logcat -d -t 4000 | grep -iE "FATAL|AndroidRuntime: |Caused by|chromium.*(crash|kill|fatal|oom)|Renderer|render process|lowmemory|lmkd|am_kill|am_proc_died|Killing |has died|OutOfMemory|WebView.*(crash|gone)|aw_browser|cr_Child" | grep -v "lmkd.*init" | tail -16`));
+  }
+  return res;
+};
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+await R.check('"Open with" while the app is running (roster.xlsx; the open workbook has unsaved changes)', () => openWith('roster.xlsx', XLSX_MIME));
 screencap('roster');
-await R.check('open a second file (qm-report.xlsx) with the picker', () => openViaPicker('qm-report.xlsx'));
+await R.check('provider links after opening roster.xlsx', providerLinks);
+await R.check('"Open with" a second file (qm-report.xlsx): K-07', () => openWith('qm-report.xlsx', XLSX_MIME));
 screencap('qm-report');
-await R.check('after 2nd open: toast / dialogs / page errors', () => page.evaluate(() => [document.querySelector('.toast')?.textContent, document.querySelector('[data-testid=confirm-text]')?.textContent]));
+await R.check('after 2nd open: toast / dialogs / page errors', () => page.evaluate(() => [document.querySelector('.toast')?.textContent, document.querySelector('[data-testid=ask-text]')?.textContent ?? null]));
 
 // scrolling with real swipes on the frozen-pane file (problems 5, 8, 11)
 await R.check('swipe scroll: frame times', async () => {
@@ -163,19 +233,33 @@ cal.swipe(grid.x + 200, grid.y + 300, grid.x + 200, grid.y + 330, 300);
 await sleep(1200);
 screencap('qm-scrolled-2');
 
-// "Open with": VIEW intent with a MediaStore content:// uri
-await R.check('"Open with" (VIEW intent) opens legacy.xls', async () => {
-  sh('am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Download/people.csv >/dev/null');
-  await sleep(2000);
-  const q = sh(`content query --uri content://media/external/file --projection _id:_display_name --where "_display_name='people.csv'"`);
-  const id = /_id=(\d+)/.exec(q)?.[1];
-  if (!id) return 'no MediaStore row: ' + q.trim().slice(0, 200);
-  const out = sh(`am start -W -a android.intent.action.VIEW -d content://media/external/file/${id} -t text/csv --grant-read-uri-permission -n ${PKG}/com.zetl.petak.MainActivity`);
-  await sleep(6000);
-  return [out.trim().split('\n').slice(-3).join(' | '), await page.evaluate(() => window.__doc.snapshot.file.name).catch((e) => 'page: ' + e.message)];
+// old .xls through "Open with"
+await R.check('"Open with" legacy.xls (old format, with formatting)', async () => {
+  const r = await openWith('legacy.xls', 'application/vnd.ms-excel');
+  const look = await page.evaluate(() => { const ws = window.__doc.wb.getActiveSheet(); const st = ws.getRange('A1').getCellStyleData(); return { bg: st?.bg?.rgb, fs: st?.fs, colB: ws.getColumnWidth(1) }; }).catch((e) => 'page: ' + e.message);
+  return { ...(typeof r === 'string' ? { r } : r), look };
 });
-screencap('open-with');
-await R.check('resolve activities for .xls VIEW', () => sh('cmd package query-activities -a android.intent.action.VIEW -t application/vnd.ms-excel | grep -c petak || true').trim());
+screencap('open-with-xls');
+await R.check('Petak is offered for a content:// .xls (count of matching lines, 0 = not offered)', () => sh('cmd package query-activities -a android.intent.action.VIEW -d content://media/external/file/1 -t application/vnd.ms-excel | grep -c petak || true').trim());
+await R.check('cold start by "Open with" (the app is not running): people.csv', async () => {
+  const id = await mediaId('people.csv');
+  if (!id) return 'no MediaStore row';
+  sh(`am force-stop ${PKG}`);
+  await sleep(1500);
+  sh(`am start -W -a android.intent.action.VIEW -d content://media/external/file/${id} -t text/csv --grant-read-uri-permission -n ${PKG}/com.zetl.petak.MainActivity`);
+  await sleep(8000);
+  const { page: p2 } = await attach();
+  await sleep(2000);
+  // the restored session may have unsaved changes
+  const asked = await p2.$('[data-testid=ask-discard]').catch(() => null);
+  if (asked) await asked.click();
+  await sleep(5000);
+  return p2.evaluate(() => [window.__doc.snapshot.file.name, window.__doc.wb.getActiveSheet().getRange('A1').getValue()]);
+});
+screencap('cold-open-with');
+await R.check('why Android killed Petak during this run (empty = it never did)', () => sh(`logcat -d | grep -E "Killing [0-9]+:${PKG.replace(/\./g, '\\.')}[/: ]" | tail -4 || true`).trim().slice(0, 1500));
+await R.check('providers Petak is connected to (a Play services provider here means Android kills Petak when Play services restarts)', () =>
+  sh(`dumpsys activity providers | awk '/ContentProviderRecord\\{/ {rec=$0} /->.*${PKG}/ {print rec " <= " $0}' | head -8 || true`).trim().slice(0, 2000));
 R.save();
 console.log('device audit finished');
 process.exit(0);

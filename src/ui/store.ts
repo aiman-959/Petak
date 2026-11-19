@@ -33,6 +33,8 @@ interface UiState {
   toast: { text: string; id: number } | null;
   progress: { done: number; total: number; label: string } | null;
   confirm: { text: string; resolve: (ok: boolean) => void; okOnly?: boolean } | null;
+  /** a question with a text answer (sheet name…); `check` returns an error message or null */
+  prompt: { title: string; label: string; value: string; check?: (v: string) => string | null; resolve: (v: string | null) => void } | null;
   /** three-way question (Save / Don't save / Cancel) */
   ask: { text: string; options: Array<{ id: string; label: string; kind?: 'primary' | 'secondary' | 'danger' }>; resolve: (id: string | null) => void } | null;
   /** long-press menu: what was pressed */
@@ -46,7 +48,7 @@ export interface ContextTarget {
   picture?: string;
 }
 
-let state: UiState = { dialog: null, tab: null, toast: null, progress: null, confirm: null, ask: null, context: null, theme: 'light' };
+let state: UiState = { dialog: null, tab: null, toast: null, progress: null, confirm: null, ask: null, prompt: null, context: null, theme: 'light' };
 const listeners = new Set<() => void>();
 const set = (patch: Partial<UiState>) => {
   state = { ...state, ...patch };
@@ -102,6 +104,23 @@ export const ui = {
           resolve: (ok) => {
             set({ confirm: null });
             resolve(ok);
+          },
+        },
+      }),
+    );
+  },
+  /** Ask for a line of text; resolves null when cancelled. */
+  promptText(title: string, label: string, value: string, check?: (v: string) => string | null): Promise<string | null> {
+    return new Promise((resolve) =>
+      set({
+        prompt: {
+          title,
+          label,
+          value,
+          check,
+          resolve: (v) => {
+            set({ prompt: null });
+            resolve(v);
           },
         },
       }),

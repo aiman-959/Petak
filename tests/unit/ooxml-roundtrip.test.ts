@@ -148,4 +148,43 @@ describe('a workbook made in the app', () => {
     // the file stores the prefixed function name
     expect(diffPackages(out.buf, out.buf).after('xl/worksheets/sheet1.xml')).toContain('_xlfn.XLOOKUP(');
   });
+
+  it('keeps the default font and column width of a workbook from .xls / .ods / CSV', () => {
+    const data = {
+      id: 'wb', name: 'Old.xlsx', sheetOrder: ['s1'], styles: {}, defaultStyle: { ff: 'Arial', fs: 10 },
+      sheets: { s1: { id: 's1', name: 'Sheet1', defaultColumnWidth: 88, cellData: { 0: { 0: { v: 'x', t: 1 } } } } },
+    } as never;
+    const out = writeOoxml(data, { cf: [], meta: null, macroEnabled: false });
+    const styles = diffPackages(out.buf, out.buf).after('xl/styles.xml');
+    expect(styles).toMatch(/<fonts count="1"><font><sz val="10"\/><color theme="1"\/><name val="Arial"\/><\/font>/);
+    const back = load(out.buf);
+    expect(back.res.defaultStyle).toMatchObject({ ff: 'Arial', fs: 10 });
+    expect(back.data.sheets[back.data.sheetOrder[0]].defaultColumnWidth).toBe(88);
+  });
+
+  it('F-08: a new workbook with its own number format and a new font gets a well-formed styles.xml', () => {
+    const data = {
+      id: 'wb', name: 'New.xlsx', sheetOrder: ['s1'],
+      styles: { a: { n: { pattern: '0.0" kg"' }, bl: 1 }, b: { n: { pattern: '\\$#,##0.00' }, bg: { rgb: '#fde68a' } } },
+      sheets: { s1: { id: 's1', name: 'Sheet1', cellData: { 0: { 0: { v: 12.5, t: 2, s: 'a' }, 1: { v: 3, t: 2, s: 'b' } } } } },
+    } as never;
+    const out = writeOoxml(data, { cf: [], meta: null, macroEnabled: false });
+    const styles = diffPackages(out.buf, out.buf).after('xl/styles.xml');
+    // the number formats come first, then the fonts, each collection whole
+    expect(styles).toMatch(/<styleSheet[^>]*><numFmts count="2"><numFmt numFmtId="164" formatCode="0.0&quot; kg&quot;"\/><numFmt numFmtId="165" formatCode="\\\$#,##0.00"\/><\/numFmts><fonts count="\d+">/);
+    // xmllint-free well-formedness: every element that opens closes, in order
+    const stack: string[] = [];
+    for (const m of styles.replace(/<\?xml[^>]*\?>/, '').matchAll(/<(\/?)([\w:]+)[^>]*?(\/?)>/g)) {
+      if (m[3]) continue;
+      if (m[1]) expect(stack.pop(), `closing ${m[2]}`).toBe(m[2]);
+      else stack.push(m[2]);
+    }
+    expect(stack).toEqual([]);
+    const back = load(out.buf);
+    const st = back.data.styles as Record<string, { n?: { pattern: string }; bl?: number; bg?: { rgb: string } }>;
+    const s0 = st[back.data.sheets[back.data.sheetOrder[0]].cellData[0][0].s as string];
+    const s1 = st[back.data.sheets[back.data.sheetOrder[0]].cellData[0][1].s as string];
+    expect(s0).toMatchObject({ n: { pattern: '0.0" kg"' }, bl: 1 });
+    expect(s1).toMatchObject({ n: { pattern: '\\$#,##0.00' }, bg: { rgb: '#fde68a' } });
+  });
 });

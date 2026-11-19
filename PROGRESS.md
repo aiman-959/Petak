@@ -1,6 +1,6 @@
 # Petak QA: progress and handover
 
-Last updated: 2026-11-14 · Branch `ccr-8fa3d735-i4cb23` · Last commit `3038429` · App version `1.1.0` (not bumped yet)
+Last updated: 2026-11-19 · Branch `claude/practical-davinci-plplss` (earlier work on `ccr-8fa3d735-i4cb23`) · App version `1.2.1`
 
 This file is the handover for the next work session. The brief being worked on is the six-phase
 QA plan (audit → 12 known problems → acceptance criteria → check every function → performance →
@@ -11,11 +11,12 @@ report and build). `AUDIT.md` holds every bug with its ID; this file says where 
 | Phase | State |
 |---|---|
 | 1. Full audit | **Done.** `AUDIT.md` written (7 Critical, 12 Known, 7 High, Medium/Low, emulator findings). |
-| 2. Known problems | **In progress.** About two thirds fixed and tested. Drawing, fonts, file opening and rendering still open. |
-| 3. Acceptance criteria | Partly covered by the Phase 2 work (cell interaction, links, pictures). Rest not started. |
-| 4. Every function and feature | Not started. |
-| 5. Performance and stability | Not started (scroll/pinch compositor is built, device numbers not measured). |
-| 6. Report and build | Not started. |
+| 2. Known problems | **Done** except device fps (K-05), measured in Phase 5 on the emulator / headless only. |
+| 3. Acceptance criteria | **Done.** M-01…M-10, L-01, L-02 fixed with tests (`phase3.mjs`, commit `cdfc0c0`). |
+| 4. Every function and feature | **Done.** 476 functions vs LibreOffice / Excel (FUNCTION-CHECK.md, F-01: 11 fixed); 153 menu commands each pressed by a test (FEATURES.md, `commands.mjs`); round trips of every sample file with LibreOffice recalculation (`roundtrip.mjs`); touches for everyday tasks (`taps.mjs`). Found and fixed F-02…F-06. |
+| 5. Performance and stability | **Done.** `tests/perf/PHASE5.md` (fling / pinch 10 s per tier on 50 large-font rows and 50k × 20, 20 files in a row: no leak), `tests/perf/RESULTS.md` (before / after). Found and fixed F-07. K-05 stays open until measured on the phone. |
+| 6. Report and build | **Done.** AUDIT.md final, TEST-REPORT.md, README (1.2.0 notes, comparison table, limitations), version 1.2.0 (versionCode 3). APK from CI (see below). |
+| After the plan: 1.2.1 | **Done.** L-03: `.ods` files open with their formatting (`src/io/ods.ts`, checked against LibreOffice's own .xlsx). Found and fixed F-08 (broken `styles.xml` for new workbooks with a currency / date format). Version 1.2.1 (versionCode 4). |
 
 ## Fixed and proven by tests
 
@@ -36,102 +37,105 @@ report and build). `AUDIT.md` holds every bug with its ID; this file says where 
 | H-04 | Autofilter not loaded | unit + e2e |
 | H-05 | No touch resize / autofit / hide / unhide | `cells.mjs` |
 | M-02 | No Sum / Average / Count status | `cells2.mjs` |
+| K-01 | Shapes can't be selected or deleted after drawing | `draw-touch.mjs`, `part3.mjs`; emulator |
+| K-02 | Polyline never finishes | `draw-touch.mjs`; emulator (4-point polyline by taps + double tap) |
+| K-03 | Line tool is tap-to-tap | `draw-touch.mjs`; emulator (line by press–drag–release) |
+| K-04 | Nothing snaps to cell lines | `draw.test.ts`, `draw-touch.mjs` |
+| K-06 | Excel fonts display wrongly | `fonts.mjs`, `fonts.test.ts` |
+| K-08 | Borders faded / missing at zoom ≠ 100 % | `render.mjs` (screenshot measured at 60–130 %) |
+| K-11 | Frozen panes overlap | no longer reproduces; `render.mjs` |
+| C-04 | "Open with Petak" | emulator: running app, second file, `.xls`, cold start |
+| K-07 | Opening another file does nothing | cause found (Android ends the app when Play services restarts); session saved 0.4 s after opening; `files.mjs` |
+| H-03 | `.xls` without formatting | `biff.test.ts`, `files.mjs` |
+| H-06 | Unsaved prompt can't save | `files.mjs` |
+| H-07 | Rich text flattened | `richtext.test.ts`, `files.mjs` |
+| M-01 | No fill handle | `cells.mjs`, `fill.test.ts` |
+| — | Quick tap on the next row started editing | `cells.mjs` (double tap needs the same cell) |
+| M-01…M-10, L-01, L-02 | Phase 3 acceptance items | `phase3.mjs`, unit tests |
+| F-01 | 11 functions wrong (INT, CEILING.MATH, FLOOR.MATH, INDEX, VALUE, ISREF, 5 Excel 2007 distributions) | `function-check.test.ts`, `functions.test.ts` |
+| F-02 | Paste threw without clipboard permission; Univer permission banner | `commands.mjs` (runs without the permission) |
+| F-03 | Tap ignored after a row-header menu → long-press menu acted on old cells | `commands.mjs` |
+| F-04 | Sort moved a text column's heading | `taps.mjs`, `phase3.test.ts` |
+| F-05 | Typing into a Text cell converted `0012` / `=1+1` | `commands.mjs` |
+| F-06 | .xls / .ods / csv saved as .xlsx lost default font and column width | `roundtrip.mjs`, `ooxml-roundtrip.test.ts` |
+| F-07 | Univer command stack grew with every tap | `commands.mjs` |
+| L-03 | `.ods` opened without fonts, fills, borders, number formats, widths | `ods.test.ts`, `roundtrip.mjs` |
+| F-08 | New / .xls / .ods / CSV workbook with a currency or date format and a font saved a broken `styles.xml` | `ooxml-roundtrip.test.ts`, `roundtrip.mjs` (well-formed XML check) |
 
-Also done: formula argument hints, numeric keyboard for number cells, Enter moves down / Tab moves right.
+Also new: recent files, clear messages when a file cannot be opened, Format → Font & size with
+your own font files, Android Back button handled by the page.
 
-### Last full test run (all green, at commit `3038429`)
+### Last full test run (release 1.2.1)
 
 | Suite | Result |
 |---|---|
-| Unit (Vitest, 17 files) | 108 / 108 |
-| `tests/e2e/features.mjs` | 19 / 19 |
-| `tests/e2e/part2.mjs` | 16 / 16 |
-| `tests/e2e/part3.mjs` | 17 / 17 |
-| `tests/e2e/part4.mjs` | 9 / 9 |
-| `tests/e2e/cells.mjs` | 14 / 14 |
-| `tests/e2e/cells2.mjs` | 12 / 12 |
+| Unit (Vitest, 26 files) | 168 / 168 |
+| `npm run test:e2e` (14 suites, `tests/e2e/out/summary.json`) | 206 / 206 |
 
-The Android emulator job has not been rerun since these fixes.
+Emulator (CI `device` job, Android 14 WebView): line, rectangle (fit to cells, tool back to
+Select), tap-select, polyline by double tap and Back out of drawing mode all work.
+Emulator, files: "Open with" works with the app running (asks about unsaved changes first), for a
+second file, for the old `.xls` (with formatting) and from a cold start. When the page vanished on
+the second file (about one run in three) Android had ended Petak because the system WebView holds a
+connection to Play services' font provider during its first seconds and Play services restarted
+(details under K-07 in `AUDIT.md`). Not switchable from the app; mitigated by saving the session
+0.4 s after a file opens. The device script re-attaches after such a restart and reports what the
+restarted app shows (`afterRestart`).
 
-## Still open in Phase 2
+Device-script lessons: `adb shell uiautomator dump` and Playwright's `device.wait/tap` (driver apk
+not installed) both kill the page connection ("Target page, context or browser has been closed").
+The script therefore opens files only through intents; the system picker is not automated.
+
+## Still open
 
 | ID | Problem | State |
 |---|---|---|
-| K-01 | Shapes can't be selected or deleted after drawing | Design settled (below), **no code written** |
-| K-02 | Polyline never finishes | same |
-| K-03 | Line tool is tap-to-tap | same |
-| K-04 | Nothing snaps to cell lines | same |
-| K-06 | Excel fonts display wrongly | Not started |
-| K-07 | Opening another file does nothing | Not reproduced on web; needs the emulator run |
-| K-08 | Grid lines and borders broken at zoom ≠ 100 % | Not started |
-| K-11 | Frozen header rows draw twice | Not started |
-| C-04 | "Open with Petak" does not open the file | Not started (Android intent / `content://` handling) |
-| H-03 | `.xls` opens without formatting | Not started |
-| H-06 | Unsaved changes prompt can't save | Not started; `AskDialog` / `ui.ask` already exist for Save / Don't save / Cancel |
-| H-07 | Rich text flattened | Kept on save (C-01); not displayed as runs yet |
+| K-05 | Scroll / pinch speed on the phone | Mid-tier slow frames halved on the server; needs `chrome://inspect` on the Snapdragon 8s Gen 3 (TEST-REPORT.md, "What a test server cannot tell") |
+| K-07 | Android ends the app when Play services restarts | Mitigated (session saved 0.4 s after opening); not fixable in the app |
 
-`AUDIT.md` still shows every item as "Open". **Update its statuses with the test evidence above** as part of closing Phase 2.
+## Drawing tools rework (K-01 to K-04): done
 
-## Next step: drawing tools rework (K-01 to K-04)
+What was built (details in `AUDIT.md` under each ID):
 
-Everything needed was read; the design is decided. Files to change: `src/draw/geometry.ts`,
-`state.ts`, `render.ts`, `exporters.ts`, `DrawLayer.tsx`, `src/grid/input.ts`, `src/index.css`.
+- **Input.** `GridInput` has `feedDown / feedMove / feedUp / feedCancel` (and `owns`). The draw
+  overlay keeps shape gestures and hands pans, flings, pinches and cell taps to the grid; its own
+  `scrollBy` pan is gone, the mouse wheel is forwarded to Univer's canvas. Fed touches never open
+  menus or the editor. A pointer the WebView cancels mid-shape continues on raw touch events.
+- **Select (default).** Handles (22 px finger radius), drag selected shape = move, tap = select
+  (16 px), drag elsewhere = scroll, tap empty = select cell and deselect, two fingers = pinch.
+  Mouse keeps the marquee. Unfilled shapes are picked by their inside only in drawing mode.
+- **Draw.** Press–drag–release with preview; back to Select after one shape unless the tool was
+  long-pressed (or double-clicked); second finger within 250 ms cancels and zooms, later it
+  turns snapping off. Mode chip `draw-mode-chip` with `chip-magnet`, `chip-fit`,
+  `chip-undo-point`, `chip-cancel`, `draw-finish` (Done).
+- **Polyline.** Points on release, double tap / first point (`closed`) / Done, Undo point, Back cancels.
+- **Snapping.** `SNAP_PX = 12` screen px; scoring and fallbacks as designed; `snaps.enabled`
+  (magnet), `snaps.angle15`; cell centres on by default; per-axis edge vs centre uses the same
+  priority penalty. Locked-angle arc, "60° ✓" labels, "48.5 mm · 30°" live label.
+- **Angle dimension.** Tool `angle`: drag the first arm then tap/drag the second (snaps relative to
+  the first arm), or tap two lines (`refs`, follows them; `refreshAngles` on every commit; a
+  deleted line leaves a plain angle). Also "Measure the angle" in the floating bar for two lines.
+  Rendered, and exported to SVG / DXF / PDF; closed polylines too.
+- **Selection UI.** Floating bar (`shape-delete`, `shape-duplicate`, `shape-front`, `shape-back`,
+  `shape-lock`, `shape-angle`), only in Select; length / angle fields for lines (`prop-length`,
+  `prop-angle`); shapes listed per layer (`layer-shape-<id>`). Locked shapes: selectable, not
+  movable / resizable / deletable, fields disabled.
+- **Back.** `src/ui/back.ts` (`onBack`, `window.__petakBack`); `MainActivity` asks it first.
+  Drawing: gesture → polyline → picked lines → panel → tool → selection → close drawing mode.
 
-**Input.** The draw overlay keeps its own pointer handling for shapes, but hands scroll, pinch and
-cell taps to the grid's touch layer. Add `feedDown / feedMove / feedUp / feedCancel` to `GridInput`
-(bypass the target and `enabled` checks, no pointer capture) and delete DrawLayer's own `scrollBy` pan.
+## Next, in order
 
-**Select mode (default).**
-- Handle of the selected shape → resize / rotate / vertex (touch radius about 22 px)
-- Drag on a selected shape → move. Tap on a shape → select (16 dp tolerance)
-- Drag on empty space or an unselected shape → grid pan/fling. Tap on empty space → select the cell and deselect shapes. Two fingers → pinch
-- Mouse keeps the marquee. Interior taps select unfilled shapes only while drawing mode is on
-- Locked shapes can be selected (to unlock) but not moved, resized or deleted
-
-**Draw mode.**
-- One finger: press, drag with live preview, release. After one shape, return to Select unless the tool was locked by long-pressing its button
-- Second finger before the first moved past the slop (or about 250 ms): cancel the shape, pan/zoom instead. Second finger later: snapping off temporarily
-- Mode chip above the bottom toolbar (`draw-mode-chip`); chips for "Fit to cells", magnet, and for polylines "Undo point" and "Done"
-
-**Polyline.** Rubber-band preview, point placed on release; finish by double tap (320 ms / 28 px, no stray
-point), tapping the first point (`closed: true`), or Done; Undo point; Back/Escape cancels.
-
-**Rectangle "fit to cells"** (default on): union of the start cell and the current cell.
-
-**Snapping.** 12 px in screen space at every zoom (`12 / zoom`). Score = distance + priority × 4 px:
-cell corners 0, cell centres 4, object corners/midpoints 8. If none: angle snap, then per-axis cell
-edges, then centres. Marker + guide line. Master magnet toggle. Defaults: edges, centres, objects on.
-
-**Angles.** Snap to multiples of 30° and 45° within about 4°; 0/90/180/270 within about 6°; optional
-15° steps; or off. Label "48.5 mm · 30°" (counter-clockwise, 0–360), "60° ✓" with arc and guide when
-locked. Rotate handle uses the same snapping.
-
-**Model additions.** `Shape.locked`, `Shape.closed`, shape type `'angle'` (three points, or two line
-refs, recomputed live), `SnapToggles.angle15` and `.enabled`, helpers `angleOf`, `snapAngle`,
-`cellRectFor`, `lineFromLengthAngle`, `hitTest` interior option. Renderer and all three exporters
-(SVG, DXF, PDF) need the `angle` type and closed polylines.
-
-**Selection UI.** Floating toolbar: Delete, Duplicate, Bring to front, Send to back, Lock
-(`shape-delete`, `shape-duplicate`, `shape-front`, `shape-back`, `shape-lock`); exact-input card with
-length and angle for lines; shapes listed in the layers panel.
-
-**Back button.** Polyline in progress → cancel; tool armed → Select; selection → deselect; else close drawing mode.
-
-**Tests to write.** Unit tests for the new geometry (angle table, snap priority at several zooms, fit
-to cells, hit tolerance, angle dimension); a touch e2e suite on the phone profile for K-01 to K-04;
-update `tests/e2e/part3.mjs` (mouse, tablet) for the changed defaults.
-
-## After drawing, in order
-
-1. Fonts (K-06): Calibri → Carlito, Cambria → Caladea, Arial / Times / Courier → Liberation, CJK → Noto Sans CJK; download on first use with size shown; import own fonts; keep the original font name on save
-2. Files: "Open with" and `content://` (C-04), K-07 on the emulator, Save / Don't save / Cancel (H-06), clear errors, recent files
-3. Rendering: device-pixel aligned grid lines and borders (K-08), frozen panes drawn once (K-11)
-4. `.xls` formatting (H-03)
-5. Rerun the emulator job, update `AUDIT.md`, write the Phase 2 summary, commit
-6. Phase 3 leftovers: fill handle series, coloured reference highlights, group/outline, PDF export and page setup, workbook tabs, performance profile before/after
-7. Phase 4: workbook covering every function, compared with headless LibreOffice and Microsoft's examples; a test per feature; round-trip tests; tap counts for 10 everyday tasks
-8. Phase 5: 50 large-font rows + 50k × 20 file, fling and pinch for 10 s; 20-file stress test; Low / Mid / High tiers
-9. Phase 6: final `AUDIT.md`, `TEST-REPORT.md`, README comparison table, version bump, release APK, download link
+1. Publish the release: push tag `v1.2.1` from a machine that may push tags (the cloud session cannot);
+   CI then attaches the APKs to a GitHub Release. Until then the APK is the `Petak-apks` artifact of the
+   CI run for the release commit `5ed1688` (run 95, build and emulator jobs green):
+   https://github.com/aiman-959/Petak/actions/runs/44457787218/artifacts/14498028886
+   (`Petak-v1.2.1.apk` 6.1 MB, per-ABI APKs, debug APK, SHA256SUMS.txt, SIZE.md). No release key is set in
+   the repository secrets, so CI signs the release APK with its debug key. (The 1.2.0 build, run 89, is
+   superseded; tag `v1.2.0` was never pushed.)
+2. Hand checks on the phone (TEST-REPORT.md): frame rate at 120 Hz, thermal behaviour, clipboard with
+   other apps, the system picker and share sheet. Also open an `.ods` made on a computer.
+3. Nothing else is open from the plan. Possible next work: conditional formats, comments and pictures
+   from `.ods` / `.xls` files (both open without them, and say so).
 
 ## How to work in this repo
 
@@ -141,14 +145,17 @@ npx tsc -b                      # type check
 npx vitest run                  # unit tests
 npx vite build                  # rebuild dist after every source edit
 npx vite preview --port 4173 &  # e2e suites run against this
-node tests/e2e/cells.mjs
-node tests/e2e/cells2.mjs
-node tests/e2e/part2.mjs && node tests/e2e/part3.mjs && node tests/e2e/part4.mjs
-BASE_URL=http://localhost:4173/ node tests/e2e/features.mjs   # default base is :5173
+export BASE_URL=http://localhost:4173/
+npm run test:e2e                # every e2e suite (tests/e2e/run-all.mjs); one suite: node tests/e2e/<name>.mjs
+node tests/e2e/feature-matrix.mjs                    # FEATURES.md, after commands.mjs
+node tests/functions/libreoffice.mjs                 # LibreOffice's function results (needs soffice)
+UPDATE_DOCS=1 npx vitest run tests/unit/function-check.test.ts   # FUNCTION-CHECK.md
+node tests/perf/phase5.mjs && node tests/perf/perf50k.mjs        # PHASE5.md, RESULTS.md
 ```
 
 - Touch gestures in tests: `tests/e2e/touch.mjs` (`tap, doubleTap, longPress, drag, fling, pinch`). On the 412 px phone profile use column D
-- Fixtures: `tests/fixtures/make-fixtures.mjs` → `tests/fixtures/files/*` (roster, QM report, xlsm, xls, csv)
+- Fixtures: `tests/fixtures/make-fixtures.mjs` → `tests/fixtures/files/*` (roster, QM report, xlsm, xls, csv);
+  `tests/fixtures/make-ods.mjs` → `looks.ods` and LibreOffice's own `looks-lo.xlsx` of it (needs soffice)
 - Emulator: the `device` job in `.github/workflows/android.yml`
 - LibreOffice headless (`soffice`) is the reference for formula comparison
 
@@ -162,10 +169,29 @@ BASE_URL=http://localhost:4173/ node tests/e2e/features.mjs   # default base is 
 - TypeScript `erasableSyntaxOnly`: no constructor parameter properties
 - An open bottom sheet's backdrop covers the header buttons; close the panel before opening a picker
 - When a Playwright `waitForEvent` times out, check which call it came from and look at the screenshot first
+- `useDraw` / `useSyncExternalStore` selectors must return primitives or stable objects: a selector
+  that builds a new object each call loops forever (React error #185, blank page)
+- On the phone profile the drawing area shows sheet y ≈ 62–440 (tool bar above, chips and the
+  properties card below): taps outside it land on other UI
+- With a drawing tool kept on, the floating selection bar must stay hidden or it covers the next shape's start
+- Never `await` between disposing the old workbook and creating the new one (UI code reads `doc.wb`)
+- Never use `local()` fonts or ask Android for fonts: the WebView's connection to Play services' font provider gets the app killed (K-07); the substitutes are bundled and registered under the Excel names
+- The grid canvas is stretched on Low / Mid tiers (`canvasStretch`): measure rendering on the screenshot, not on the canvas
+- Device script: never `adb shell uiautomator dump` or Playwright `device.tap/wait` (both cut the page connection); open files through intents
+- Device tests: taps must land between the drawing tool bar and the chips (sheet y ≈ 62–440)
 
 ## Constraints
 
-- Commit and push only to `ccr-8fa3d735-i4cb23`; no pull request unless asked
+- Commit and push only to the session's branch (now `claude/practical-davinci-plplss`); no pull request unless asked
 - Tag pushes are refused from the cloud session, so the APK link is the GitHub Actions artifact unless a release is created by hand
 - Never commit signing keys
 - The repo was renamed to `aiman-959/Petak`; pushes print "This repository moved" and still succeed
+- Univer only pops a command from its execution stack when it succeeds: a command cancelled through `BeforeCommandExecute` must be removed by hand (F-07)
+- Measure memory after a full garbage collection (a heap snapshot); detached canvases and file inputs seen by DevTools are not necessarily leaks
+- Playwright's file chooser keeps the hidden `<input type=file>` alive: DOM node counts in browser tests grow by itself
+- LibreOffice's own .xlsx is a good reference for an .ods but not perfect: it writes theme colours instead of
+  some cells' font colours, and fitted row heights as 13.8 pt. Check such cells against how the file was made
+- SheetJS's .ods values for dates and times are rounded to the second and dates before March 1900 are a day
+  short; `ods.ts` reads the exact values
+- A big .ods holds ~140 MB of XML for 50 000 rows: never build an element per cell (`children()`); scan once
+- Petak's own reader tolerates broken XML that Excel refuses: check saved packages are well-formed (F-08)

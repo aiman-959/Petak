@@ -165,6 +165,11 @@ export class FormulaBridge {
     return this.enqueue(() => this.rpc.call('whatIf', sheetId, trials as never, reads as never));
   }
 
+  /** The cells of the circular reference through a cell ([] when there is none). */
+  cyclePath(sheetId: string, row: number, col: number) {
+    return this.enqueue(() => this.rpc.call('cyclePath', sheetId, row, col)) as Promise<Array<[string, number, number]>>;
+  }
+
   evaluate(sheetId: string, formula: string) {
     return this.enqueue(() => this.rpc.call('evaluate', sheetId, formula));
   }

@@ -3,7 +3,7 @@
  * worker and app metadata. UI components talk to this singleton.
  */
 import type { IWorkbookData, ICellData, IWorksheetData } from '@univerjs/core';
-import { ICommandService, IResourceManagerService, IUndoRedoService, IUniverInstanceService, UniverInstanceType } from '@univerjs/core';
+import { CommandType, ICommandService, IResourceManagerService, IUndoRedoService, IUniverInstanceService, UniverInstanceType } from '@univerjs/core';
 import { RES_THREADS } from '../io/review';
 import { setSparklines } from '../features/sparklines';
 import { setDrawings, setImageListener } from '../draw/render';
@@ -22,9 +22,12 @@ import { notesResource, RES_DV } from '../io/review';
 import { pictures, setCellPictures, clearCellPictures } from '../pictures/pictures';
 import { kv } from './storage';
 import { Compositor } from '../grid/compositor';
+import { invalidateDocumentFontMetrics } from '@univerjs/engine-render';
+import { ensureFonts, fontReport, reportText } from '../fonts/fonts';
 import { GridInput, type GridInputHooks } from '../grid/input';
 import { cfFromUniver, cfToUniver, type UCfRule } from '../univer/cf';
-import { getTier } from '../device/tier';
+import { canvasStretch, getTier } from '../device/tier';
+import { fixThinLines } from '../grid/view';
 import { governor } from '../device/governor';
 import { AutosaveTracker, loadSession } from './autosave';
 import { MIME, saveFile, type OpenedFile } from '../io/files';
@@ -64,6 +67,8 @@ export interface Origin {
   tables: Array<TableInfo & { sheetId: string }>;
   date1904: boolean;
 }
+/** undoable change of charts, sparklines, slicers, drawings… (see updateMeta) */
+const META_MUTATION = 'petak.mutation.set-meta';
 const ORIGIN_KEY = 'session:origin';
 const MEDIA_KEY = 'session:media';
 
@@ -154,9 +159,25 @@ class Doc {
       // again. Nothing is shown, but focus goes to it (the keyboard opens), typed text is lost and
       // undo is routed to that editor instead of the sheet. Petak edits in the formula bar, so
       // that editor is never allowed to open on touch devices.
-      const api = this.h.api as unknown as { addEvent(name: string, fn: (e: { id: string; params?: { visible?: boolean }; cancel?: boolean }) => void): unknown; Event: { BeforeCommandExecute: string } };
+      const api = this.h.api as unknown as {
+        addEvent(name: string, fn: (e: { id: string; params?: { visible?: boolean }; cancel?: boolean }) => void): unknown;
+        Event: { BeforeCommandExecute: string };
+        _commandService: { _commandExecutionStack: Array<{ id: string; params?: unknown }> };
+      };
       api.addEvent(api.Event.BeforeCommandExecute, (e) => {
-        if ((e.id === 'sheet.operation.set-cell-edit-visible' || e.id === 'sheet.operation.set-activate-cell-edit') && e.params?.visible !== false) e.cancel = true;
+        if ((e.id === 'sheet.operation.set-cell-edit-visible' || e.id === 'sheet.operation.set-activate-cell-edit') && e.params?.visible !== false) {
+          e.cancel = true;
+          // Univer leaves a cancelled command on its execution stack (it pops only on success). These
+          // two run on every selection change, and each entry holds the sheet's scene: after another
+          // file was opened the old canvases (about 4 MB each time) could never be freed.
+          const stack = api._commandService._commandExecutionStack;
+          for (let i = stack.length - 1; i >= 0; i--) {
+            if (stack[i].id === e.id && stack[i].params === e.params) {
+              stack.splice(i, 1);
+              break;
+            }
+          }
+        }
       });
       const tier = getTier();
       const comp = new Compositor(container, tier.tier === 'high' ? 8 : tier.tier === 'mid' ? 6 : 4);
@@ -199,6 +220,23 @@ class Doc {
     });
     this.repaintSparklines = repaint;
     const cmd = this.injector<ICommandService>(ICommandService);
+    // charts, sparklines, slicers, pivots, drawings… live in `meta`; their changes are undone with
+    // the workbook's own Undo, in order with cell edits (M-05)
+    cmd.registerCommand({
+      id: META_MUTATION,
+      type: CommandType.MUTATION,
+      handler: (_accessor: unknown, params?: { unitId: string; parts: Record<string, string | null> }) => {
+        if (!params || params.unitId !== this.h.api.getActiveWorkbook()?.getId()) return false;
+        for (const [k, v] of Object.entries(params.parts)) {
+          if (v === null) delete (this.meta as unknown as Record<string, unknown>)[k];
+          else (this.meta as unknown as Record<string, unknown>)[k] = JSON.parse(v);
+        }
+        this.syncMetaRenderers();
+        this.markDirty();
+        this.emit({});
+        return true;
+      },
+    } as never);
     cmd.onCommandExecuted((info, options) => {
       if (this.loading || this.gesturing) return;
       const opt = options as { fromFormulaEngine?: boolean; onlyLocal?: boolean; autoGrow?: boolean } | undefined;
@@ -317,14 +355,18 @@ class Doc {
     if (!this.snap.dirty) this.emit({ dirty: true });
     this.scheduleAutosave();
   }
-  private scheduleAutosave() {
+  private scheduleAutosave(ms = governor.backgroundDelay(getTier().autosaveMs)) {
     clearTimeout(this.autosaveTimer);
-    this.autosaveTimer = setTimeout(() => this.autosave(), governor.backgroundDelay(getTier().autosaveMs));
+    this.autosaveTimer = setTimeout(() => this.autosave(), ms);
   }
-  /** After a whole workbook was (re)loaded: everything must be written once. */
+  /**
+   * After a whole workbook was (re)loaded: everything must be written once, and soon. Android can
+   * end the app at any moment (memory, or when a service it uses restarts); the next start restores
+   * the saved session, which must then be the file just opened, not the one before it (K-07).
+   */
   private markAllForSave() {
     this.saver.markAll(this.wb.getSheets().map((s) => s.getSheetId()));
-    this.scheduleAutosave();
+    this.scheduleAutosave(400);
   }
 
   private disposeCurrent() {
@@ -340,6 +382,7 @@ class Doc {
       sheetOrder: ['sheet1'],
       sheets: { sheet1: { id: 'sheet1', name: 'Sheet1', rowCount: 1000, columnCount: 26, defaultColumnWidth: 88, defaultRowHeight: 24 } as IWorksheetData },
     });
+    fixThinLines(canvasStretch);
     this.meta = emptyMeta();
     this.origin = null;
     this.names = [];
@@ -390,6 +433,8 @@ class Doc {
     ui.progress(1, 1, 'Building grid');
     await new Promise((r) => setTimeout(r, 0));
     this.loading = true;
+    // before the old workbook goes away: there is never a moment without a workbook
+    await this.prepareFonts({ styles: res.styles, sheets, defaultStyle: res.defaultStyle } as Partial<IWorkbookData>);
     this.disposeCurrent();
     const unitId = 'wb' + Date.now().toString(36);
     const resources: Array<{ name: string; data: string }> = (res.resources ?? []).map((r) => (r.name === RES_THREADS ? { ...r, data: withUnitId(r.data, unitId) } : r));
@@ -400,6 +445,7 @@ class Doc {
     const threads = (res.meta as AppMeta | null)?.threads;
     if (threads && Object.keys(threads).length && !resources.some((r) => r.name === RES_THREADS)) resources.push({ name: RES_THREADS, data: withUnitId(JSON.stringify(threads), unitId) });
     const fwb = this.h.api.createWorkbook({ id: unitId, name: file.name, styles: res.styles, sheetOrder: order, sheets, resources, defaultStyle: res.defaultStyle } as Partial<IWorkbookData>);
+    fixThinLines(canvasStretch);
     this.meta = { ...emptyMeta(), ...(res.meta ?? {}) };
     this.names = (res.names ?? []).filter((n) => !n.builtin && !n.orphan);
     this.loadWarnings = res.warnings ?? [];
@@ -548,8 +594,9 @@ class Doc {
     const canInPlace = (f.uri || f.handle) && sameFormat === f.format;
     if (!canInPlace) return this.saveAs(sameFormat);
     const { data, mime } = await this.serialize(sameFormat);
-    await saveFile(data, f.name, mime, { uri: f.uri, handle: f.handle });
-    this.emit({ dirty: false, savedAt: Date.now() });
+    const target = await saveFile(data, f.name, mime, { uri: f.uri, handle: f.handle });
+    // saving in place can end in "Save as" (a file opened through "Open with" is often read-only)
+    this.emit({ file: { ...this.snap.file, name: target.name || f.name, uri: target.uri ?? f.uri, handle: target.handle ?? f.handle }, dirty: false, savedAt: Date.now() });
     this.autosave();
   }
 
@@ -595,8 +642,10 @@ class Doc {
     if (!s) return false;
     const extra = s.extra as { meta: AppMeta; cf: CfEntry[]; file: FileInfo; dirty: boolean; names?: NameDef[]; pictures?: typeof pictures.list; addedMedia?: string[] };
     this.loading = true;
+    await this.prepareFonts(s.data as Partial<IWorkbookData>);
     this.disposeCurrent();
     const fwb = this.h.api.createWorkbook(s.data);
+    fixThinLines(canvasStretch);
     this.meta = { ...emptyMeta(), ...extra.meta };
     this.origin = (await kv.get<Origin>(ORIGIN_KEY).catch(() => undefined)) ?? null;
     this.names = extra.names ?? [];
@@ -622,7 +671,54 @@ class Doc {
   }
 
   /** Push metadata that affects rendering (sparklines) to the renderers. */
+  /** what happened to the fonts of the open file (substitutes, missing), for the "Opened" message */
+  fontNotice: string | null = null;
+  /** Fonts must be loaded before the workbook is measured, or text is laid out with fallback widths. */
+  private async prepareFonts(data: Partial<IWorkbookData>) {
+    const names = new Set<string>();
+    const ff = (st: unknown) => {
+      const f = (st as { ff?: string } | null | undefined)?.ff;
+      if (f) names.add(f);
+    };
+    ff(data.defaultStyle);
+    for (const st of Object.values(data.styles ?? {})) ff(st);
+    // scripts beyond Latin (Cyrillic, Greek…) live in separate font files: sample some text
+    const extra = new Set<string>();
+    let seen = 0;
+    scan: for (const sh of Object.values(data.sheets ?? {})) {
+      for (const row of Object.values((sh?.cellData ?? {}) as Record<number, Record<number, ICellData>>)) {
+        for (const c of Object.values(row)) {
+          ff(c?.s);
+          if (typeof c?.v === 'string') for (const ch of c.v) if (ch.charCodeAt(0) > 0xff && ch.charCodeAt(0) < 0x2e80) extra.add(ch);
+          if (++seen > 4000 || extra.size > 150) break scan;
+        }
+      }
+    }
+    if (!names.size) names.add('Arial');
+    await ensureFonts(names, [...extra].join(''));
+    this.fontNotice = reportText(fontReport(names));
+  }
+  private fontTimer: ReturnType<typeof setTimeout> | undefined;
+  /** A font finished loading (or was added / removed): measure text again and redraw. */
+  fontsChanged() {
+    clearTimeout(this.fontTimer);
+    this.fontTimer = setTimeout(() => {
+      if (this.loading) return;
+      try {
+        invalidateDocumentFontMetrics(() => true);
+        const ws = this.wb.getActiveSheet();
+        const sk = ws.getSkeleton() as unknown as { makeDirty?(d: boolean): void; calculate?(): void } | null;
+        sk?.makeDirty?.(true);
+        sk?.calculate?.();
+        ws.refreshCanvas();
+      } catch {
+        /* no workbook yet */
+      }
+    }, 80);
+  }
+
   syncMetaRenderers() {
+    fixThinLines(canvasStretch);
     setSparklines(this.meta.sparklines ?? []);
     setDrawings(this.meta.drawings, this.meta.drawUnit ?? 'mm');
     try {
@@ -632,8 +728,39 @@ class Doc {
     }
   }
 
-  updateMeta(fn: (m: AppMeta) => void) {
+  /**
+   * Change charts, sparklines, slicers, drawings… The change goes on the workbook's undo
+   * history (only the parts that changed are kept), unless `undoable` is false (drawing mode's
+   * own undo / redo, which must not record itself again).
+   */
+  updateMeta(fn: (m: AppMeta) => void, opts: { undoable?: boolean } = {}) {
+    const m = this.meta as unknown as Record<string, unknown>;
+    const before = new Map(Object.keys(m).map((k) => [k, JSON.stringify(m[k])]));
     fn(this.meta);
+    if (opts.undoable !== false) {
+      const undo: Record<string, string | null> = {};
+      const redo: Record<string, string | null> = {};
+      for (const k of new Set([...before.keys(), ...Object.keys(m)])) {
+        const b = before.get(k) ?? null;
+        const a = k in m && m[k] !== undefined ? JSON.stringify(m[k]) : null;
+        if (a !== b) {
+          undo[k] = b;
+          redo[k] = a;
+        }
+      }
+      if (Object.keys(redo).length) {
+        try {
+          const unitID = this.wb.getId();
+          this.injector<{ pushUndoRedo(item: unknown): void }>(IUndoRedoService).pushUndoRedo({
+            unitID,
+            undoMutations: [{ id: META_MUTATION, params: { unitId: unitID, parts: undo } }],
+            redoMutations: [{ id: META_MUTATION, params: { unitId: unitID, parts: redo } }],
+          });
+        } catch (e) {
+          console.warn('meta change not on the undo history', e);
+        }
+      }
+    }
     this.syncMetaRenderers();
     this.markDirty();
     this.emit({});
@@ -655,6 +782,13 @@ class Doc {
       /* no workbook */
     }
   }
+  /** row / column metadata changes (outline levels) are not cell edits: mark the file as changed */
+  markDirtyPublic() {
+    // row / column metadata is written with the whole sheet in the saved session
+    this.saver.markAll([this.wb.getActiveSheet().getSheetId()]);
+    this.markDirty();
+    this.scheduleAutosave();
+  }
   undo() {
     this.focusWorkbook();
     return this.h.api.undo();
@@ -664,6 +798,7 @@ class Doc {
     return this.h.api.redo();
   }
 }
+
 
 export const doc = new Doc();
 (globalThis as unknown as { __doc: Doc }).__doc = doc; // handy for e2e tests and debugging

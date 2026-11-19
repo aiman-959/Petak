@@ -1,7 +1,8 @@
 /** App chrome: top bar, sheet tabs, phone bottom bar, tablet side panel, overlays. */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { onBack } from './back';
 import {
-  Undo2, Redo2, PenTool, FolderOpen, Save, MoreVertical, Moon, Sun, Plus, Pencil, LayoutGrid, Paintbrush, PlusSquare, Database, Wrench, X, FilePlus, Share2, Download, Copy, Trash2,
+  Undo2, Redo2, PenTool, FolderOpen, History, ChevronLeft, ChevronRight, Printer, Save, MoreVertical, Moon, Sun, Plus, Pencil, LayoutGrid, Paintbrush, PlusSquare, Database, Wrench, X, FilePlus, Share2, Download, Copy, Trash2,
 } from 'lucide-react';
 import { useDoc } from './hooks';
 import { fileActions, sheets as sheetActions } from './actions';
@@ -28,7 +29,7 @@ export function TopBar({ onToggleTheme, dark }: { onToggleTheme: () => void; dar
       <button className="icon-btn" aria-label="Undo" data-testid="undo" onClick={() => doc.undo()}>
         <Undo2 size={22} />
       </button>
-      <button className="icon-btn" aria-label="Redo" onClick={() => doc.redo()}>
+      <button className="icon-btn" aria-label="Redo" data-testid="redo" onClick={() => doc.redo()}>
         <Redo2 size={22} />
       </button>
       <button className="icon-btn" aria-label="Open" data-testid="open" onClick={fileActions.open}>
@@ -37,7 +38,7 @@ export function TopBar({ onToggleTheme, dark }: { onToggleTheme: () => void; dar
       <button className="icon-btn" aria-label="Save" data-testid="save" onClick={fileActions.save}>
         <Save size={22} />
       </button>
-      <button className="icon-btn" aria-label="More" onClick={() => setMenu(true)}>
+      <button className="icon-btn" aria-label="More" data-testid="menu-more" onClick={() => setMenu(true)}>
         <MoreVertical size={22} />
       </button>
       {menu && (
@@ -45,10 +46,12 @@ export function TopBar({ onToggleTheme, dark }: { onToggleTheme: () => void; dar
           <div className="btn-grid" onClick={() => setMenu(false)}>
             <Tool icon={<FilePlus />} label="New" onClick={fileActions.newFile} />
             <Tool icon={<FolderOpen />} label="Open" onClick={fileActions.open} />
+            <Tool icon={<History />} label="Recent" testId="menu-recent" onClick={() => ui.open('recent')} />
             <Tool icon={<Save />} label="Save" onClick={fileActions.save} />
             <Tool icon={<Download />} label="Save .xlsx" onClick={() => fileActions.saveAs('xlsx')} />
             <Tool icon={<Download />} label="Save .xlsm" onClick={() => fileActions.saveAs('xlsm')} />
             <Tool icon={<Download />} label="Export .csv" onClick={() => fileActions.saveAs('csv')} />
+            <Tool icon={<Printer />} label="Print / PDF" testId="menu-print" onClick={() => ui.open('pagesetup')} />
             <Tool icon={<Share2 />} label="Share" onClick={fileActions.share} />
             <Tool icon={dark ? <Sun /> : <Moon />} label={dark ? 'Light mode' : 'Dark mode'} onClick={onToggleTheme} />
             <Tool icon={<LayoutGrid />} label="About" onClick={() => ui.open('about')} />
@@ -69,7 +72,15 @@ export function Tool({ icon, label, onClick, on, testId }: { icon: ReactNode; la
   );
 }
 
+/** The Android Back button closes the top-most sheet or dialog. */
+function useBackToClose(onClose: () => void) {
+  const ref = useRef(onClose);
+  ref.current = onClose;
+  useEffect(() => onBack(() => (ref.current(), true)), []);
+}
+
 export function Sheet({ title, onClose, children }: { title?: string; onClose: () => void; children: ReactNode }) {
+  useBackToClose(onClose);
   return (
     <>
       <div className="sheet-backdrop" onClick={onClose} />
@@ -86,6 +97,7 @@ export function SheetTabs() {
   const s = useDoc();
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const press = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const longFired = useRef(false);
   return (
     <nav className="tabs" aria-label="Sheets">
       <div className="scroll">
@@ -95,14 +107,31 @@ export function SheetTabs() {
             <button
               key={x.id}
               className={'tab' + (x.id === s.activeSheetId ? ' active' : '')}
+              data-testid={'sheet-tab-' + x.name}
               onClick={() => sheetActions.activate(x.id)}
               onDoubleClick={() => setMenuFor(x.id)}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setMenuFor(x.id);
               }}
-              onPointerDown={() => (press.current = setTimeout(() => setMenuFor(x.id), 550))}
+              onPointerDown={() => {
+                longFired.current = false;
+                press.current = setTimeout(() => {
+                  longFired.current = true;
+                  setMenuFor(x.id);
+                }, 550);
+              }}
               onPointerUp={() => clearTimeout(press.current)}
+              onTouchEnd={(e) => {
+                // the tap that ends a long press must not land on the menu that just opened
+                if (longFired.current) e.preventDefault();
+              }}
+              onClickCapture={(e) => {
+                if (longFired.current) {
+                  e.stopPropagation();
+                  longFired.current = false;
+                }
+              }}
               onPointerLeave={() => clearTimeout(press.current)}
             >
               {x.name}
@@ -115,9 +144,11 @@ export function SheetTabs() {
       {menuFor && (
         <Sheet title="Sheet" onClose={() => setMenuFor(null)}>
           <div className="btn-grid" onClick={() => setMenuFor(null)}>
-            <Tool icon={<Pencil />} label="Rename" onClick={() => sheetActions.rename(menuFor)} />
+            <Tool icon={<Pencil />} label="Rename" testId="sheet-rename" onClick={() => sheetActions.rename(menuFor)} />
             <Tool icon={<Copy />} label="Duplicate" onClick={() => sheetActions.duplicate(menuFor)} />
             <Tool icon={<Trash2 />} label="Delete" onClick={() => sheetActions.remove(menuFor)} />
+            <Tool icon={<ChevronLeft />} label="Move left" testId="sheet-move-left" onClick={() => sheetActions.move(menuFor, -1)} />
+            <Tool icon={<ChevronRight />} label="Move right" testId="sheet-move-right" onClick={() => sheetActions.move(menuFor, 1)} />
           </div>
         </Sheet>
       )}
@@ -174,6 +205,7 @@ export function SidePanel() {
 }
 
 export function Dialog({ title, onClose, children, testId }: { title: string; onClose: () => void; children: ReactNode; testId?: string }) {
+  useBackToClose(onClose);
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', k);
@@ -235,5 +267,44 @@ export function Overlays() {
         </Dialog>
       )}
     </>
+  );
+}
+
+/** A question with a text answer; the error under the field updates while typing. */
+export function PromptDialog() {
+  const p = useUi((s) => s.prompt);
+  const [v, setV] = useState('');
+  useEffect(() => setV(p?.value ?? ''), [p]);
+  if (!p) return null;
+  const err = p.check?.(v) ?? null;
+  const ok = () => !err && p.resolve(v);
+  return (
+    <Dialog title={p.title} onClose={() => p.resolve(null)} testId="dlg-prompt">
+      <label className="field">
+        <span>{p.label}</span>
+        <input
+          className="input"
+          autoFocus
+          value={v}
+          data-testid="prompt-input"
+          aria-invalid={!!err}
+          onChange={(e) => setV(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && ok()}
+        />
+      </label>
+      {err && (
+        <p className="error" role="alert" data-testid="prompt-error">
+          {err}
+        </p>
+      )}
+      <div className="row" style={{ justifyContent: 'flex-end' }}>
+        <button className="secondary" data-testid="prompt-cancel" onClick={() => p.resolve(null)}>
+          Cancel
+        </button>
+        <button className="primary" data-testid="prompt-ok" disabled={!!err} onClick={ok}>
+          OK
+        </button>
+      </div>
+    </Dialog>
   );
 }
