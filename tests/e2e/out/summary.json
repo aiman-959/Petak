@@ -3,7 +3,7 @@
   "suite": "cells",
   "passed": 16,
   "total": 16,
-  "seconds": 23,
+  "seconds": 22,
   "failed": [],
   "ok": true
  },
@@ -11,7 +11,7 @@
   "suite": "cells2",
   "passed": 12,
   "total": 12,
-  "seconds": 25,
+  "seconds": 24,
   "failed": [],
   "ok": true
  },
@@ -35,7 +35,7 @@
   "suite": "part3",
   "passed": 18,
   "total": 18,
-  "seconds": 12,
+  "seconds": 11,
   "failed": [],
   "ok": true
  },
@@ -43,7 +43,7 @@
   "suite": "part4",
   "passed": 9,
   "total": 9,
-  "seconds": 22,
+  "seconds": 21,
   "failed": [],
   "ok": true
  },
@@ -51,7 +51,7 @@
   "suite": "fonts",
   "passed": 8,
   "total": 8,
-  "seconds": 7,
+  "seconds": 6,
   "failed": [],
   "ok": true
  },
@@ -75,7 +75,7 @@
   "suite": "features",
   "passed": 19,
   "total": 19,
-  "seconds": 31,
+  "seconds": 30,
   "failed": [],
   "ok": true
  },
@@ -83,7 +83,7 @@
   "suite": "phase3",
   "passed": 10,
   "total": 10,
-  "seconds": 17,
+  "seconds": 16,
   "failed": [],
   "ok": true
  },
@@ -91,15 +91,15 @@
   "suite": "commands",
   "passed": 28,
   "total": 28,
-  "seconds": 96,
+  "seconds": 93,
   "failed": [],
   "ok": true
  },
  {
   "suite": "roundtrip",
-  "passed": 9,
-  "total": 9,
-  "seconds": 39,
+  "passed": 11,
+  "total": 11,
+  "seconds": 47,
   "failed": [],
   "ok": true
  },
@@ -107,7 +107,7 @@
   "suite": "taps",
   "passed": 13,
   "total": 13,
-  "seconds": 25,
+  "seconds": 24,
   "failed": [],
   "ok": true
  }
