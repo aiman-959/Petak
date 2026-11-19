@@ -88,7 +88,9 @@ await step('keyboard: Ctrl+C, Ctrl+V, Ctrl+X', async () => {
 await step('status bar shows Sum, Average, Count of the selection', async () => {
   await ev(() => window.__doc.wb.getActiveSheet().getRange('A1:C2').activate());
   await page.waitForSelector('[data-testid=status-bar]');
-  // A1:C2 = 1, 2, 3 / 4, 420, 6
+  // A1:C2 = 1, 2, 3 / 4, 420, 6. The bar may still show the previous selection (the pasted B8:B10):
+  // it is computed 60 ms after the selection settles
+  await page.waitForFunction(() => document.querySelector('[data-testid=status-sum]')?.textContent === '436', null, { timeout: 3000 }).catch(() => {});
   assert.equal(await page.textContent('[data-testid=status-sum]'), '436');
   assert.equal(await page.textContent('[data-testid=status-count]'), '6');
   assert.equal(await page.textContent('[data-testid=status-avg]'), '72.6667');
