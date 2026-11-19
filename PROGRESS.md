@@ -1,6 +1,6 @@
 # Petak QA: progress and handover
 
-Last updated: 2026-11-18 · Branch `claude/practical-davinci-plplss` (earlier work on `ccr-8fa3d735-i4cb23`) · App version `1.2.0`
+Last updated: 2026-11-19 · Branch `claude/practical-davinci-plplss` (earlier work on `ccr-8fa3d735-i4cb23`) · App version `1.2.1`
 
 This file is the handover for the next work session. The brief being worked on is the six-phase
 QA plan (audit → 12 known problems → acceptance criteria → check every function → performance →
@@ -16,6 +16,7 @@ report and build). `AUDIT.md` holds every bug with its ID; this file says where 
 | 4. Every function and feature | **Done.** 476 functions vs LibreOffice / Excel (FUNCTION-CHECK.md, F-01: 11 fixed); 153 menu commands each pressed by a test (FEATURES.md, `commands.mjs`); round trips of every sample file with LibreOffice recalculation (`roundtrip.mjs`); touches for everyday tasks (`taps.mjs`). Found and fixed F-02…F-06. |
 | 5. Performance and stability | **Done.** `tests/perf/PHASE5.md` (fling / pinch 10 s per tier on 50 large-font rows and 50k × 20, 20 files in a row: no leak), `tests/perf/RESULTS.md` (before / after). Found and fixed F-07. K-05 stays open until measured on the phone. |
 | 6. Report and build | **Done.** AUDIT.md final, TEST-REPORT.md, README (1.2.0 notes, comparison table, limitations), version 1.2.0 (versionCode 3). APK from CI (see below). |
+| After the plan: 1.2.1 | **Done.** L-03: `.ods` files open with their formatting (`src/io/ods.ts`, checked against LibreOffice's own .xlsx). Found and fixed F-08 (broken `styles.xml` for new workbooks with a currency / date format). Version 1.2.1 (versionCode 4). |
 
 ## Fixed and proven by tests
 
@@ -58,16 +59,18 @@ report and build). `AUDIT.md` holds every bug with its ID; this file says where 
 | F-05 | Typing into a Text cell converted `0012` / `=1+1` | `commands.mjs` |
 | F-06 | .xls / .ods / csv saved as .xlsx lost default font and column width | `roundtrip.mjs`, `ooxml-roundtrip.test.ts` |
 | F-07 | Univer command stack grew with every tap | `commands.mjs` |
+| L-03 | `.ods` opened without fonts, fills, borders, number formats, widths | `ods.test.ts`, `roundtrip.mjs` |
+| F-08 | New / .xls / .ods / CSV workbook with a currency or date format and a font saved a broken `styles.xml` | `ooxml-roundtrip.test.ts`, `roundtrip.mjs` (well-formed XML check) |
 
 Also new: recent files, clear messages when a file cannot be opened, Format → Font & size with
 your own font files, Android Back button handled by the page.
 
-### Last full test run (release 1.2.0)
+### Last full test run (release 1.2.1)
 
 | Suite | Result |
 |---|---|
-| Unit (Vitest, 25 files) | 158 / 158 |
-| `npm run test:e2e` (14 suites, `tests/e2e/out/summary.json`) | 204 / 204 |
+| Unit (Vitest, 26 files) | 168 / 168 |
+| `npm run test:e2e` (14 suites, `tests/e2e/out/summary.json`) | 206 / 206 |
 
 Emulator (CI `device` job, Android 14 WebView): line, rectangle (fit to cells, tool back to
 Select), tap-select, polyline by double tap and Back out of drawing mode all work.
@@ -89,7 +92,6 @@ The script therefore opens files only through intents; the system picker is not 
 |---|---|---|
 | K-05 | Scroll / pinch speed on the phone | Mid-tier slow frames halved on the server; needs `chrome://inspect` on the Snapdragon 8s Gen 3 (TEST-REPORT.md, "What a test server cannot tell") |
 | K-07 | Android ends the app when Play services restarts | Mitigated (session saved 0.4 s after opening); not fixable in the app |
-| L-03 | `.ods` opens without fonts, fills, borders, column widths | Documented; reading ODS styles would be the next step |
 
 ## Drawing tools rework (K-01 to K-04): done
 
@@ -150,7 +152,8 @@ node tests/perf/phase5.mjs && node tests/perf/perf50k.mjs        # PHASE5.md, RE
 ```
 
 - Touch gestures in tests: `tests/e2e/touch.mjs` (`tap, doubleTap, longPress, drag, fling, pinch`). On the 412 px phone profile use column D
-- Fixtures: `tests/fixtures/make-fixtures.mjs` → `tests/fixtures/files/*` (roster, QM report, xlsm, xls, csv)
+- Fixtures: `tests/fixtures/make-fixtures.mjs` → `tests/fixtures/files/*` (roster, QM report, xlsm, xls, csv);
+  `tests/fixtures/make-ods.mjs` → `looks.ods` and LibreOffice's own `looks-lo.xlsx` of it (needs soffice)
 - Emulator: the `device` job in `.github/workflows/android.yml`
 - LibreOffice headless (`soffice`) is the reference for formula comparison
 
@@ -184,3 +187,9 @@ node tests/perf/phase5.mjs && node tests/perf/perf50k.mjs        # PHASE5.md, RE
 - Univer only pops a command from its execution stack when it succeeds: a command cancelled through `BeforeCommandExecute` must be removed by hand (F-07)
 - Measure memory after a full garbage collection (a heap snapshot); detached canvases and file inputs seen by DevTools are not necessarily leaks
 - Playwright's file chooser keeps the hidden `<input type=file>` alive: DOM node counts in browser tests grow by itself
+- LibreOffice's own .xlsx is a good reference for an .ods but not perfect: it writes theme colours instead of
+  some cells' font colours, and fitted row heights as 13.8 pt. Check such cells against how the file was made
+- SheetJS's .ods values for dates and times are rounded to the second and dates before March 1900 are a day
+  short; `ods.ts` reads the exact values
+- A big .ods holds ~140 MB of XML for 50 000 rows: never build an element per cell (`children()`); scan once
+- Petak's own reader tolerates broken XML that Excel refuses: check saved packages are well-formed (F-08)

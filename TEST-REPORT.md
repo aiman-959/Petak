@@ -1,4 +1,4 @@
-# Petak 1.2.0 — test report
+# Petak 1.2.1 — test report
 
 What was tested for this release, how, and what came out. Every bug found has an ID in
 [AUDIT.md](AUDIT.md); every number below comes from a script in `tests/` that can be run again
@@ -8,14 +8,15 @@ What was tested for this release, how, and what came out. Every bug found has an
 
 | Area | Result |
 |---|---|
-| Unit tests (Vitest, 25 files) | **158 / 158** |
-| End-to-end tests on a phone screen (Playwright, 14 suites) | **204 / 204** steps |
+| Unit tests (Vitest, 26 files) | **168 / 168** |
+| End-to-end tests on a phone screen (Playwright, 14 suites) | **206 / 206** steps |
 | Excel functions, each with a worked example | **476 / 476** give Excel's result (437 equal LibreOffice; 26 equal Excel's documented value where LibreOffice lacks the function; 6 volatile ones in range; 7 where LibreOffice differs from Excel) |
 | Menu commands with an end-to-end test | **153 / 153** ([FEATURES.md](FEATURES.md)) |
-| Sample files: open → edit → save → reopen unchanged, LibreOffice recalculates the saved file to the same values | **8 / 8** (xlsx from Excel and LibreOffice, xlsm, xls, ods, csv) |
+| Sample files: open → edit → save → reopen unchanged, LibreOffice recalculates the saved file to the same values | **9 / 9** (xlsx from Excel and LibreOffice, xlsm, xls, two ods, csv) |
+| `.ods` formatting: every cell of a LibreOffice test file looks as in LibreOffice's own .xlsx of it | **154 / 154** cells, 13 border styles, 26 number formats ([L-03](AUDIT.md#l-03-ods-formatting)) |
 | Twenty files opened in a row | no memory growth, no errors, still edits and computes |
-| Bugs found in this round (Phases 4–5) | 7 (F-01 … F-07), all fixed with a test |
-| Findings overall (Phases 1–5) | 46: 7 Critical, 12 Known, 7 High, 10 Medium, 3 Low, F-01 … F-07. **43 fixed**, each with its test; K-05 partly (frame rate still to be measured on the phone), K-07 mitigated (Android ending the app is outside Petak's control), L-03 open (`.ods` formatting) |
+| Bugs found in this round (Phases 4–5 and 1.2.1) | 8 (F-01 … F-08), all fixed with a test |
+| Findings overall | 47: 7 Critical, 12 Known, 7 High, 10 Medium, 3 Low, F-01 … F-08. **45 fixed**, each with its test; K-05 partly (frame rate still to be measured on the phone), K-07 mitigated (Android ending the app is outside Petak's control) |
 
 ## How it was tested
 
@@ -45,12 +46,12 @@ What was tested for this release, how, and what came out. Every bug found has an
 | `features.mjs` | the original core features: xlsm with VBA, csv, formulas, sheets, freeze, sort, filter, find, formatting, charts, pivot, undo, autosave, macros, transforms | 19 |
 | `phase3.mjs` | coloured references, error help, sheet rename / move, CSV notices, grouping, print / PDF (M-03…M-10, L-01, L-02) | 10 |
 | `commands.mjs` | every menu command not covered elsewhere, run **without clipboard permission** | 28 |
-| `roundtrip.mjs` | open → edit → save → reopen, LibreOffice import and recalculation | 9 |
+| `roundtrip.mjs` | open → edit → save → reopen, LibreOffice import and recalculation, well-formed XML in every saved file, `.ods` looks | 11 |
 | `taps.mjs` | touches needed for everyday tasks | 13 |
-| **Total** | | **204** |
+| **Total** | | **206** |
 
-Unit tests (`tests/unit`, 158) cover the formula engine and all 476 functions
-(`function-check.test.ts`), the xlsx reader / writer and lossless save, `.xls` formatting, CSV,
+Unit tests (`tests/unit`, 168) cover the formula engine and all 476 functions
+(`function-check.test.ts`), the xlsx reader / writer and lossless save, `.xls` and `.ods` formatting, CSV,
 rich text, fonts, drawing geometry, the fill handle, PDF layout, the governor, transforms, macros and
 the data model.
 
@@ -74,16 +75,23 @@ Seven differ from LibreOffice because LibreOffice differs from Excel; each is ex
 | qm-report-lo.xlsx (LibreOffice) | 2 | 328 | 19 |
 | macro.xlsm (with VBA) | 2 | 328 | 19 |
 | legacy.xls | 2 | 165 | 14 |
-| roster.ods (made by LibreOffice) | 2 | 141 | 14 |
+| roster.ods (made by LibreOffice) | 2 | 165 | 14 |
+| looks.ods (made by LibreOffice) | 2 | 155 | 1 |
 | people.csv | 1 | 20 | 1 |
 
 For each file: (1) the values Petak loads equal LibreOffice's reading of the same file; (2) after
 one edit, Save as .xlsx and reopening, every cell's value, formula, font, fill, colour, number
 format, alignment and borders, the merges, frozen panes, column widths and row heights are as before
 plus the edit; (3) LibreOffice opens Petak's file, recalculates every formula and gets the same
-values. The one expected difference: the CSV identifier `0012` stays text in Petak (L-01).
-`.ods` files open with values, formulas and merges but without fonts, fills, borders or column widths (hence the
-lower cell count above: the roster's 24 blank formatted cells are not read), L-03 in AUDIT.md.
+values. The one expected difference: the CSV identifier `0012` stays text in Petak (L-01). Every
+part of every saved file must be well-formed XML (this found F-08).
+
+`.ods` files keep their looks (L-03): the roster `.ods` LibreOffice made from the Excel roster looks
+as the roster does (fonts, fills, colours, borders, alignment, merges, column widths within LibreOffice's
+slightly wider character), and `looks.ods` (`tests/fixtures/make-ods.mjs`) looks as LibreOffice's own
+`.xlsx` of it, number formats compared by what they show. LibreOffice's `.xlsx` is wrong in two places,
+noted in the tests: four cells get the theme colour instead of their own font colour, and rows it fitted to
+their content are written at its 13.8 pt standard height.
 
 ## Touches for everyday tasks
 

@@ -8,10 +8,11 @@ Status column: **Open** = not fixed yet; **Fixed** = fixed and covered by the na
 (phone-profile Playwright suites in `tests/e2e/`, unit tests in `tests/unit/`). **Partly** = some of it
 fixed, the rest says what remains. This file is updated at the end of every phase.
 
-**Final state for release 1.2.0:** 46 findings (7 Critical, 12 Known, 7 High, 10 Medium, 3 Low, F-01…F-07).
-43 fixed, each with the test that proves it; K-05 partly (frame rate to be measured on the phone);
-K-07 mitigated (Android ends the app when Play services restarts; the session survives); L-03 open
-(`.ods` formatting). Test results: [TEST-REPORT.md](TEST-REPORT.md).
+**Final state for release 1.2.1:** 47 findings (7 Critical, 12 Known, 7 High, 10 Medium, 3 Low, F-01…F-08).
+45 fixed, each with the test that proves it; K-05 partly (frame rate to be measured on the phone);
+K-07 mitigated (Android ends the app when Play services restarts; the session survives).
+1.2.1 adds L-03 (`.ods` formatting) and F-08 (found while testing it) to 1.2.0.
+Test results: [TEST-REPORT.md](TEST-REPORT.md).
 
 ## How the audit was done
 
@@ -81,13 +82,14 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | M-10 | Medium | Sheet rename uses the browser `prompt()`; no move/reorder of sheets | Fixed (`phase3.mjs`): rename dialog with Excel’s rules, move left / right |
 | L-01 | Low | CSV: `0012` becomes `12` (Excel does the same; Petak could keep text) | Fixed (`csv.test.ts`, `phase3.mjs`): leading-zero and long digit strings stay text; CSV dates get a date format |
 | L-02 | Low | "Opened file" toast covers the last visible row for 3 s | Fixed (`phase3.mjs`): messages at the top, see-through to taps |
-| L-03 | Low | `.ods` files open without fonts, fills, borders or column widths (values, formulas and merges are read) | Open: documented in README; round trip of what is read is tested (`roundtrip.mjs`) |
+| L-03 | Low | `.ods` files open without fonts, fills, borders or column widths (values, formulas and merges are read) | Fixed in 1.2.1 (`ods.test.ts`, `roundtrip.mjs`): fonts, fills, borders, alignment, wrap, rotation, number formats, widths, heights, hidden rows / columns, frozen panes are read and match LibreOffice's own .xlsx of the file |
 | F-01 | High | 11 built-in functions give wrong results: INT of negatives, CEILING.MATH / FLOOR.MATH mode, INDEX on a one-row array, VALUE("$1,000"), ISREF, and NORMSDIST, LOGNORMDIST, HYPGEOMDIST, NEGBINOMDIST, BETADIST (#N/A / #NUM!) | Fixed (`function-check.test.ts`, `functions.test.ts`): all 476 functions match Excel, see FUNCTION-CHECK.md |
 | F-02 | High | Without clipboard permission (a WebView may refuse it) every Paste threw, and Univer showed a "Permission Denied — please allow Univer…" banner over the top rows on each copy | Fixed (`commands.mjs` runs without the permission): Paste uses what was copied in Petak, no banner |
 | F-03 | Medium | After a row-header selection and a selection made in code, the next tap on a cell was ignored: the long-press menu then acted on the old cells (Clear formats hit the wrong cell) | Fixed (`commands.mjs`) |
 | F-04 | Medium | Sort kept the header only when the sorted column had numbers: sorting a text column moved its heading into the list | Fixed (`taps.mjs` 8, `phase3.test.ts`): headings guessed like Excel (any column text over numbers, bold first row, frozen row) |
 | F-05 | Medium | Typing into a cell formatted as Text turned `0012` into 12 and `=1+1` into a formula | Fixed (`commands.mjs`) |
 | F-06 | Medium | Saving a workbook that came from .xls / .ods / CSV as .xlsx changed its default font to Calibri 11 and its column widths to 64 px | Fixed (`roundtrip.mjs`, `ooxml-roundtrip.test.ts`) |
+| F-08 | High | Saving a workbook that did not come from an .xlsx (new, .xls, .ods, CSV) wrote a broken `styles.xml` when it had a number format Excel does not have built in (Currency, Euro, any Date from the Format menu) together with a font, fill or border: Excel reports such a file as damaged, Petak lost the number formats on reopening | Fixed in 1.2.1 (`ooxml-roundtrip.test.ts`; `roundtrip.mjs` now checks every saved package is well-formed XML) |
 | F-07 | Low | Univer's command stack grew by about 1.4 entries per tap for the whole session (54 after 40 taps) and kept disposed sheet scenes reachable | Fixed (`commands.mjs`): stays empty; 20 files in a row: no growth in live canvases, heap or renderer memory (`tests/perf/PHASE5.md`) |
 
 Device-only observations (emulator) are in the section "On a real Android WebView" at the end.
@@ -428,6 +430,47 @@ Univer only takes a command off its execution stack when it succeeds: a cancelle
 for good, about 1.4 entries per tap (54 after 40 taps), each keeping a reference to the sheet's scene.
 Every later command scanned that stack. **Fix:** the cancelling listener removes the entry
 (`src/state/doc.ts`); `commands.mjs` checks the stack is empty after taps.
+
+## After 1.2.0: L-03 and F-08 (release 1.2.1)
+
+### L-03 `.ods` formatting
+SheetJS reads an `.ods` file's values, formulas and merges only. `src/io/ods.ts` reads the rest from
+the package and hands it to the same loader as the `.xls` looks (H-03):
+
+- cell styles from `content.xml` and `styles.xml` with their parent styles and the document default:
+  font, size, bold, italic, underline, strike-through, colour, fill, the four borders and diagonals
+  (width and line style mapped to Excel's thirteen styles the way LibreOffice does), horizontal and
+  vertical alignment, wrap, rotation;
+- number formats: ODF number, percentage, currency (with the locale, so `1.234,57 €` stays German),
+  scientific, fraction, date, time (elapsed `[h]:mm` too) and text styles, with their conditions
+  (positive; negative; zero sections, `[>100]`) and colours (`[Red]`);
+- column widths, row heights (heights LibreOffice fitted to the content stay fittable; set ones are
+  fixed), hidden rows and columns, a whole-row or whole-column look, the default row height and
+  column width, frozen panes from `settings.xml`;
+- date and time cells at their exact value: SheetJS drops fractions of a second and counts dates
+  before March 1900 one day short.
+
+The reference is LibreOffice itself. `tests/fixtures/make-ods.mjs` has LibreOffice make `looks.ods`
+(every border style, alignment, rotation, font, fill and 26 number formats) and its own `.xlsx` of
+that file; every one of its 154 cells must look the same in both, number formats compared by what
+they show. Two differences come from LibreOffice, not from Petak: its `.xlsx` gives four cells the
+theme colour instead of their own font colour (checked against the colours the file was made with),
+and writes heights it fitted to the content as its 13.8 pt standard. `roundtrip.mjs` opens an `.ods`
+LibreOffice made from the Excel roster and checks it looks as the roster does.
+
+A 50 000-row `.ods` (139 MB of XML) takes 1.6 s more to read its looks (one pass with one regular
+expression; 0.8 s of that is unzipping and decoding), read before SheetJS so the two copies of the XML
+are never in memory together. When the file opens, a notice says what an `.ods` does not bring
+along (charts, pictures, comments, conditional formats) and that Save writes a new `.xlsx`.
+
+### F-08 Broken `styles.xml` for new workbooks
+Found by the `.ods` round trip: after Save and reopening, the number formats were gone. The style
+writer inserts a `<numFmts>` collection in front of `<fonts>` when the package has none (every
+workbook that did not come from an .xlsx) and also rewrites `<fonts>` when a font is added: both
+edits started at the same offset and the insertion was applied first, so the fonts edit overwrote
+part of it (`</fonts>mt numFmtId="166"…`). **Fix:** at the same offset the replaced collection goes
+first (`src/io/ooxml/styles.ts`). `roundtrip.mjs` now checks that every part of every saved package
+is well-formed XML.
 
 ## On a real Android WebView (emulator, API 34)
 

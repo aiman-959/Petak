@@ -38,8 +38,14 @@
  {
   "file": "roster.ods",
   "sheets": 2,
-  "cells": 141,
+  "cells": 165,
   "formulas": 14
+ },
+ {
+  "file": "looks.ods",
+  "sheets": 2,
+  "cells": 155,
+  "formulas": 1
  },
  {
   "file": "people.csv",

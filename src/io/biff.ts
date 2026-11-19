@@ -25,7 +25,20 @@ export interface BiffSheet {
   freeze?: { cols: number; rows: number };
   maxRow: number;
   maxCol: number;
+  // .ods only (src/io/ods.ts): sizes are exact lengths, and whole rows / columns can have a look
+  /** column → width in px (instead of colWidths) */
+  colPx?: Map<number, number>;
+  defaultColPx?: number;
+  /** column / row → index into `styles` for a whole-column / whole-row format */
+  colStyles?: Map<number, number>;
+  rowStyles?: Map<number, number>;
+  /** rows whose height was fitted to their content (Univer may fit them again) */
+  optimalRows?: Set<number>;
+  /** row → column → exact serial of a date / time cell (SheetJS drops fractions of a second and
+   *  counts dates before March 1900 one day short) */
+  dates?: Map<number, Map<number, number>>;
 }
+/** Looks of a workbook SheetJS reads without them: legacy .xls (this file) and .ods (ods.ts). */
 export interface BiffInfo {
   /** one style per cell XF; null = nothing to apply */
   styles: Array<IStyleData | null>;

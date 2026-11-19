@@ -7,8 +7,8 @@ android {
         applicationId "com.zetl.petak"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3
-        versionName "1.2.0"
+        versionCode 4
+        versionName "1.2.1"
         // The app ships no native (.so) code: one universal APK runs on every ABI.
         // abiFilters documents/limits the supported ABIs should a native library be added later.
         ndk {

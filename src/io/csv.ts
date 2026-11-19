@@ -3,17 +3,28 @@ import * as XLSX from 'xlsx';
 import type { ICellData, IWorksheetData } from '@univerjs/core';
 import type { LoadChunk, LoadResult, ParsedMeta } from './types';
 import { readBiffFormatting, type BiffInfo } from './biff';
+import { readOdsFormatting } from './ods';
 import { colWidthPx, maxDigitWidth } from './ooxml/read';
 
 export interface ParsedSheetJs {
   wb: XLSX.WorkBook;
   meta: ParsedMeta;
-  /** looks of a legacy .xls file (SheetJS reads only its values) */
+  /** looks of a legacy .xls or an .ods file (SheetJS reads only their values) */
   biff?: BiffInfo | null;
 }
 
 export function parseWithSheetJs(buf: ArrayBuffer, name: string): ParsedSheetJs {
   const isCsv = /\.(csv|tsv|txt)$/i.test(name);
+  const format = isCsv ? 'csv' : /\.ods$/i.test(name) ? 'ods' : 'xls';
+  // the looks first, so their copy of a big file's XML is gone before SheetJS makes its own
+  let biff: BiffInfo | null = null;
+  if (format !== 'csv') {
+    try {
+      biff = format === 'xls' ? readBiffFormatting(buf) : readOdsFormatting(buf);
+    } catch (e) {
+      console.warn(format + ' formatting not read', e);
+    }
+  }
   const wb = isCsv
     ? XLSX.read(new TextDecoder().decode(buf), { type: 'string', dense: true, cellDates: false, raw: false })
     : XLSX.read(buf, { type: 'array', dense: true, cellFormula: true, cellNF: true });
@@ -22,21 +33,12 @@ export function parseWithSheetJs(buf: ArrayBuffer, name: string): ParsedSheetJs 
     const ref = ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']) : { e: { r: -1, c: -1 } };
     return { id: 'sheet' + (i + 1), name: isCsv ? name.replace(/\.[^.]+$/, '').slice(0, 31) || 'Sheet1' : n, rows: ref.e.r + 1, cols: ref.e.c + 1 };
   });
-  const format = isCsv ? 'csv' : /\.ods$/i.test(name) ? 'ods' : 'xls';
-  let biff: BiffInfo | null = null;
-  if (format === 'xls') {
-    try {
-      biff = readBiffFormatting(buf);
-    } catch (e) {
-      console.warn('xls formatting not read', e);
-    }
-    // cells that only have a look (a filled or bordered blank cell) count towards the sheet size
-    for (const sh of biff?.sheets ?? []) {
-      const m = sheets[wb.SheetNames.indexOf(sh.name)];
-      if (m) {
-        m.rows = Math.max(m.rows, sh.maxRow + 1);
-        m.cols = Math.max(m.cols, sh.maxCol + 1);
-      }
+  // cells that only have a look (a filled or bordered blank cell) count towards the sheet size
+  for (const sh of biff?.sheets ?? []) {
+    const m = sheets[wb.SheetNames.indexOf(sh.name)];
+    if (m) {
+      m.rows = Math.max(m.rows, sh.maxRow + 1);
+      m.cols = Math.max(m.cols, sh.maxCol + 1);
     }
   }
   return { wb, meta: { sheets, hasVba: false, format }, biff };
@@ -69,6 +71,7 @@ export function* streamSheetJs(p: ParsedSheetJs, chunkRows: number): Generator<L
   const fmtIds = new Map<string, string>();
   const biff = p.biff ?? null;
   const isCsv = p.meta.format === 'csv';
+  const isOds = p.meta.format === 'ods';
   const mdw = maxDigitWidth(biff?.defaultFont ?? {});
   /** style id for a cell: its .xls look (XF) combined with its number format */
   const styleId = (xf: number | undefined, z: string | undefined): string | undefined => {
@@ -79,7 +82,8 @@ export function* streamSheetJs(p: ParsedSheetJs, chunkRows: number): Generator<L
     if (!id) {
       id = 's' + fmtIds.size;
       fmtIds.set(key, id);
-      styles[id] = { ...(look ?? {}), ...(z ? { n: { pattern: z } } : {}) };
+      // the file's own number format wins over the one SheetJS guessed
+      styles[id] = { ...(z ? { n: { pattern: z } } : {}), ...(look ?? {}) };
     }
     return id;
   };
@@ -100,13 +104,24 @@ export function* streamSheetJs(p: ParsedSheetJs, chunkRows: number): Generator<L
     if (bs) {
       const sx = sheet as unknown as Record<string, unknown>;
       if (bs.defaultColChars) sx.defaultColumnWidth = Math.round(bs.defaultColChars * mdw + 5);
+      if (bs.defaultColPx) sx.defaultColumnWidth = bs.defaultColPx;
       if (bs.defaultRowPt) sx.defaultRowHeight = Math.round((bs.defaultRowPt * 4) / 3);
-      const columnData: Record<number, { w?: number; hd?: number }> = {};
+      const columnData: Record<number, { w?: number; hd?: number; s?: string }> = {};
       for (const [c, chars] of bs.colWidths) columnData[c] = { w: colWidthPx(chars, mdw) };
+      for (const [c, px] of bs.colPx ?? []) columnData[c] = { w: px };
       for (const c of bs.hiddenCols) columnData[c] = { ...(columnData[c] ?? {}), hd: 1 };
+      for (const [c, xf] of bs.colStyles ?? []) {
+        const sid = styleId(xf, undefined);
+        if (sid) columnData[c] = { ...(columnData[c] ?? {}), s: sid };
+      }
       sx.columnData = columnData;
-      for (const [r, pt] of bs.rowHeights) rowData[r] = { h: Math.round(((pt * 4) / 3) * 100) / 100, ia: 0 };
+      // a height LibreOffice fitted to the content may be fitted again; one set by hand stays
+      for (const [r, pt] of bs.rowHeights) rowData[r] = { h: Math.round(((pt * 4) / 3) * 100) / 100, ...(bs.optimalRows?.has(r) ? {} : { ia: 0 }) };
       for (const r of bs.hiddenRows) rowData[r] = { ...(rowData[r] ?? {}), hd: 1 };
+      for (const [r, xf] of bs.rowStyles ?? []) {
+        const sid = styleId(xf, undefined);
+        if (sid) rowData[r] = { ...(rowData[r] ?? {}), s: sid };
+      }
       if (bs.freeze) sx.freeze = { xSplit: bs.freeze.cols, ySplit: bs.freeze.rows, startRow: bs.freeze.rows || -1, startColumn: bs.freeze.cols || -1 };
     }
     yield { kind: 'sheetStart', index: i, sheet };
@@ -145,7 +160,10 @@ export function* streamSheetJs(p: ParsedSheetJs, chunkRows: number): Generator<L
             cd.v = String(cell.v);
             cd.t = 1;
           }
-          const z = csvText !== null ? undefined : csvDate ?? (cell.z && cell.z !== 'General' && cell.t === 'n' ? String(cell.z) : undefined);
+          const exact = bs?.dates?.get(r)?.get(c);
+          if (exact !== undefined && (cell.t === 'n' || cell.t === 'd')) cd.v = exact;
+          // SheetJS's guess at an .ods number format is only used when the looks could not be read
+          const z = csvText !== null || (isOds && biff) ? undefined : csvDate ?? (cell.z && cell.z !== 'General' && cell.t === 'n' ? String(cell.z) : undefined);
           const sid = styleId(looks?.get(c), z);
           if (sid) cd.s = sid;
           if (cd.v !== undefined || cd.f || cd.s) out[c] = cd;
@@ -167,8 +185,12 @@ export function* streamSheetJs(p: ParsedSheetJs, chunkRows: number): Generator<L
   if (!biff) return base;
   return {
     ...base,
-    defaultStyle: { ff: biff.defaultFont.name ?? 'Arial', fs: biff.defaultFont.size ?? 10 },
-    warnings: ['Old .xls format: charts, pictures and conditional formats are not shown. Save writes a new .xlsx.'],
+    defaultStyle: isOds ? { ff: biff.defaultFont.name ?? 'Liberation Sans', fs: biff.defaultFont.size ?? 10 } : { ff: biff.defaultFont.name ?? 'Arial', fs: biff.defaultFont.size ?? 10 },
+    warnings: [
+      isOds
+        ? 'OpenDocument file: charts, pictures, comments and conditional formats are not shown. Save writes a new .xlsx.'
+        : 'Old .xls format: charts, pictures and conditional formats are not shown. Save writes a new .xlsx.',
+    ],
   } as LoadResult;
 }
 

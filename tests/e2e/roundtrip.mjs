@@ -14,6 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import * as XLSX from 'xlsx';
+import { unzipSync, strFromU8 } from 'fflate';
 import { start, BASE } from './lib.mjs';
 
 const t = await start('roundtrip');
@@ -77,8 +78,9 @@ const snapshot = () =>
       return s + (r + 1);
     };
     const rgb = (x) => (x?.rgb ? String(x.rgb).toLowerCase() : undefined);
-    // the workbook's default font named on a cell is the same as no font on it
+    // the workbook's default font (name or size) named on a cell is the same as none on it
     const defFont = wb.getWorkbook().getSnapshot().defaultStyle?.ff;
+    const defSize = wb.getWorkbook().getSnapshot().defaultStyle?.fs;
     return wb.getSheets().map((ws) => {
       const m = ws.getSheet();
       const cells = {};
@@ -96,7 +98,7 @@ const snapshot = () =>
           bg: rgb(st.bg),
           cl: rgb(st.cl),
           ff: st.ff && st.ff !== defFont ? st.ff : undefined,
-          fs: st.fs || undefined,
+          fs: st.fs && st.fs !== defSize ? st.fs : undefined,
           n: st.n?.pattern && st.n.pattern !== 'General' ? st.n.pattern : undefined,
           ht: st.ht || undefined,
           bd: bd || undefined,
@@ -150,6 +152,24 @@ function compare(petak, other, skip = () => false) {
   return diffs;
 }
 
+/** XML parts of a package that are not well formed (every element that opens closes, in order) — F-08. */
+function malformedParts(file) {
+  const bad = [];
+  for (const [name, bytes] of Object.entries(unzipSync(new Uint8Array(fs.readFileSync(file))))) {
+    if (!/\.(xml|rels|vml)$/.test(name)) continue;
+    const xml = strFromU8(bytes).replace(/<\?[^>]*\?>|<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>/g, '');
+    const stack = [];
+    let ok = true;
+    for (const m of xml.matchAll(/<(\/?)([\w:.-]+)(?:\s[^>]*?)?(\/?)>/g)) {
+      if (m[3]) continue;
+      if (!m[1]) stack.push(m[2]);
+      else if (stack.pop() !== m[2]) ok = false;
+    }
+    if (!ok || stack.length || /<[^<>]*</.test(xml.replace(/<[^>]*>/g, ''))) bad.push(name);
+  }
+  return bad;
+}
+
 /** Saves the workbook as .xlsx through the app's own writer. */
 const saveXlsx = async (name) => {
   const f = path.join(t.tmp, name);
@@ -177,6 +197,7 @@ const fixtures = [
   ['macro.xlsm', F('macro.xlsm'), F('qm-report.xlsx')],
   ['legacy.xls', F('legacy.xls')],
   ['roster.ods', ods],
+  ['looks.ods', F('looks.ods')],
   ['people.csv', F('people.csv')],
 ];
 const summary = [];
@@ -212,6 +233,7 @@ for (const [label, file, loSource] of fixtures) {
     await idle();
     const edited = await snapshot();
     const saved = await saveXlsx(label.replace(/\.[^.]+$/, '') + '-petak.xlsx');
+    assert.deepEqual(malformedParts(saved), [], 'the saved package has XML that is not well formed');
     await openFile(saved);
     await page.waitForTimeout(300);
     const again = await snapshot();
@@ -244,6 +266,57 @@ for (const [label, file, loSource] of fixtures) {
     summary.push({ file: label, sheets: edited.length, cells: n, formulas: f });
   });
 }
+
+/**
+ * L-03: an .ods file looks as the workbook it came from. Each pair: the .ods, and the reference
+ * Petak reads as .xlsx — the Excel original for the roster (LibreOffice made the .ods from it),
+ * LibreOffice's own .xlsx for looks.ods.
+ */
+await step('.ods files look like their .xlsx: fonts, fills, colours, borders, alignment, merges, sizes', async () => {
+  // LibreOffice 24.2 writes the Default style's theme colour instead of these cells' own font colour
+  // into its .xlsx (tests/unit/ods.test.ts checks them against the colours the file was made with)
+  const LO_COLOUR = new Set(['Looks!G6', 'Looks!L6', 'Looks!E8', 'Looks!G8']);
+  for (const [odsFile, refFile] of [
+    [ods, F('roster.xlsx')],
+    [F('looks.ods'), F('looks-lo.xlsx')],
+  ]) {
+    const view = async (file) => {
+      await openFile(file);
+      await page.waitForTimeout(300);
+      const def = await ev(() => window.__doc.wb.getWorkbook().getSnapshot().defaultStyle ?? {});
+      return { snap: await snapshot(), def };
+    };
+    const a = await view(refFile);
+    const b = await view(odsFile);
+    assert.equal(b.snap.length, a.snap.length, 'same sheets');
+    const pick = (c, def) => {
+      if (!c) return {};
+      const o = { v: c.v ?? null, b: c.b, i: c.i, bg: c.bg, cl: c.cl === '#000000' ? undefined : c.cl, ff: c.ff, fs: c.fs === def.fs ? undefined : c.fs, ht: c.ht, bd: c.bd };
+      for (const k of Object.keys(o)) if (o[k] === undefined) delete o[k];
+      return o;
+    };
+    const diffs = [];
+    for (let i = 0; i < a.snap.length; i++) {
+      const x = a.snap[i];
+      const y = b.snap[i];
+      assert.equal(y.name, x.name);
+      for (const ref of new Set([...Object.keys(x.cells), ...Object.keys(y.cells)])) {
+        const p = pick(x.cells[ref], a.def);
+        const q = pick(y.cells[ref], b.def);
+        if (LO_COLOUR.has(`${x.name}!${ref}`)) delete p.cl, delete q.cl;
+        if (typeof p.v === 'number' && typeof q.v === 'number' && Math.abs(p.v - q.v) < 1e-9) q.v = p.v;
+        if (JSON.stringify(p) !== JSON.stringify(q) && (p.v !== null || Object.keys(p).length > 1 || Object.keys(q).length > 1)) diffs.push(`${x.name}!${ref}: xlsx ${JSON.stringify(p)} · ods ${JSON.stringify(q)}`);
+      }
+      assert.deepEqual(y.merges, x.merges, `${x.name}: merges`);
+      // LibreOffice measures the default font's characters a little wider than Excel's 7 px
+      x.cols.forEach((w, c) => assert.ok(Math.abs((y.cols[c] ?? w) / w - 1) < 0.1, `${x.name} column ${c + 1}: xlsx ${w} px, ods ${y.cols[c]} px`));
+    }
+    assert.deepEqual(diffs, [], `${path.basename(odsFile)} looks different:\n${diffs.slice(0, 12).join('\n')}`);
+  }
+  // the toast says what an .ods does not bring along
+  const notice = await ev(() => window.__doc.loadWarnings.join(' '));
+  assert.match(notice, /OpenDocument file: charts, pictures, comments and conditional formats are not shown/);
+});
 
 fs.mkdirSync('tests/e2e/out', { recursive: true });
 fs.writeFileSync('tests/e2e/out/roundtrip.json', JSON.stringify(summary, null, 1) + '\n');

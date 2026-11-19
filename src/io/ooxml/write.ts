@@ -372,6 +372,9 @@ export function writeOoxml(data: IWorkbookData, opts: WriteOptions, onProgress?:
           const orig = rc.ht !== undefined ? Math.round(((+String(rc.ht) * 4) / 3) * 100) / 100 : NaN;
           ra += ` ht="${Math.abs(orig - rd.h) < 0.01 ? rc.ht : Math.round(rd.h * 0.75 * 100) / 100}"`;
           if (rc.ch || rc.ht === undefined || Math.abs(orig - rd.h) >= 0.01) ra += ' customHeight="1"';
+        } else if (rd.h !== undefined && rd.h !== null && rd.ia === undefined && Math.abs(rd.h - (sd.defaultRowHeight ?? 20)) >= 0.5) {
+          // a height fitted to the content where the file came from (.ods): kept, and Excel may fit it again
+          ra += ` ht="${Math.round(rd.h * 0.75 * 100) / 100}"`;
         }
         if (rd.hd) ra += ' hidden="1"';
         const rxf = rd.s ? xfOf(rd.s) : 0;

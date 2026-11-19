@@ -72,8 +72,9 @@ async function openFile(f: OpenedFile) {
   }
   if (!ok) return;
   void recent.add({ name: f.name, uri: f.uri, handle: f.handle });
-  // old .xls: say what is and is not shown (and that Save writes a new .xlsx)
-  const old = doc.snapshot.file.format === 'xls' ? doc.loadWarnings.find((w) => /\.xls/.test(w)) : undefined;
+  // old .xls and .ods: say what is and is not shown (and that Save writes a new .xlsx)
+  const fmt = doc.snapshot.file.format;
+  const old = fmt === 'xls' || fmt === 'ods' ? doc.loadWarnings.find((w) => /\.xls|OpenDocument/.test(w)) : undefined;
   ui.toast(`Opened ${f.name}` + (old ? `. ${old}` : doc.fontNotice ? `. ${doc.fontNotice}` : ''));
 }
 
