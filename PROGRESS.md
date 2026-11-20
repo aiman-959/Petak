@@ -160,7 +160,10 @@ What was built (details in `AUDIT.md` under each ID):
 1. The user adds the four signing secrets (`docs/RELEASE-SIGNING.md`) and runs the workflow; the
    `Petak-apks` artifact of that run is the 1.3.0 release (`SIGNING.txt` shows the release key). To
    publish a GitHub Release, push tag `v1.3.0` from a machine that may push tags (the cloud session
-   cannot).
+   cannot). Until then: CI run 111 (commit `2420352`), artifact `Petak-apks`
+   https://github.com/aiman-959/Petak/actions/runs/44793835141/artifacts/14658555883 —
+   `Petak-v1.3.0.apk` 6.1 MB (versionName 1.3.0, versionCode 5), per-ABI APKs, debug APK,
+   SHA256SUMS.txt, SIGNING.txt, SIZE.md; signed with that runner's throwaway debug key (no secrets yet).
 2. Hand checks on the phone (TEST-REPORT.md, "checks by hand"), above all 120 Hz pinching with the
    performance overlay.
 3. Possible next work: conditional formats, comments and pictures from `.ods` / `.xls` files.
