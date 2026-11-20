@@ -66,8 +66,21 @@ const t0 = Date.now();
 for (let round = 1; round <= ROUNDS; round++) {
   if (round % 8 === 1) {
     const f = FILES[opened++ % FILES.length];
-    if (f) await openFile(page, f);
-    else {
+    // OPEN=picker: through the Open button and the file chooser (Playwright keeps each chooser's hidden
+    // <input type=file> alive, which shows up as DOM nodes and listeners); default: the same open path
+    // the picker leads to, with the file's bytes
+    if (f && process.env.OPEN === 'picker') await openFile(page, f);
+    else if (f) {
+      await page.evaluate(
+        async ([b64, name]) => {
+          const buf = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+          await window.__doc.open({ name, buffer: buf.buffer }, { progress: () => {}, confirm: async () => true });
+          await window.__doc.bridge.idle();
+        },
+        [fs.readFileSync(f).toString('base64'), path.basename(f)],
+      );
+      await page.waitForTimeout(500);
+    } else {
       await page.evaluate(() => window.__doc.newWorkbook());
       await page.waitForTimeout(600);
     }
