@@ -86,6 +86,70 @@ async function glassBlack(name) {
   );
 }
 
+/**
+ * Where the page sits on the glass: CDP screenshots on Android show the page as it is laid out, not
+ * necessarily what the compositor put on the glass (during a gesture they showed finished tiles the
+ * glass did not have yet), so the comparisons use screen captures. Found once by sliding a resting
+ * screen capture over a page screenshot of the same moment.
+ */
+let glassTop = null;
+async function calibrateGlass() {
+  const g = execFileSync('adb', ['exec-out', 'screencap', '-p'], { maxBuffer: 64 << 20 }).toString('base64');
+  const p = (await page.screenshot()).toString('base64');
+  glassTop = await page.evaluate(
+    async ([g, p]) => {
+      const W = 206; // compare at half the CSS width
+      const load = async (b64) => {
+        const img = await createImageBitmap(await (await fetch('data:image/png;base64,' + b64)).blob());
+        const h = Math.round((img.height * W) / img.width);
+        const c = new OffscreenCanvas(W, h);
+        const ctx = c.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, W, h);
+        return { d: ctx.getImageData(0, 0, W, h).data, h, scale: img.width / W };
+      };
+      const [G, P] = await Promise.all([load(g), load(p)]);
+      let best = 0;
+      let bestErr = Infinity;
+      for (let dy = 0; dy + P.h <= G.h; dy++) {
+        let err = 0;
+        for (let y = 0; y < P.h; y += 3)
+          for (let x = 0; x < W; x += 3) {
+            const i = (y * W + x) * 4;
+            const j = ((y + dy) * W + x) * 4;
+            err += Math.abs(P.d[i] - G.d[j]) + Math.abs(P.d[i + 1] - G.d[j + 1]) + Math.abs(P.d[i + 2] - G.d[j + 2]);
+          }
+        if (err < bestErr) {
+          bestErr = err;
+          best = dy;
+        }
+      }
+      return Math.round(best * G.scale); // glass px
+    },
+    [g, p],
+  );
+  return glassTop;
+}
+/** The glass now, cut to the page (so page regions apply), as base64 PNG; also saved to device-out. */
+async function glassShot(name) {
+  const png = execFileSync('adb', ['exec-out', 'screencap', '-p'], { maxBuffer: 64 << 20 });
+  fs.writeFileSync(path.join(OUT, `pinch-${name}.png`), png);
+  return page.evaluate(
+    async ([b64, top]) => {
+      const img = await createImageBitmap(await (await fetch('data:image/png;base64,' + b64)).blob());
+      const k = img.width / innerWidth;
+      const h = Math.round(innerHeight * k);
+      const c = new OffscreenCanvas(img.width, h);
+      c.getContext('2d').drawImage(img, 0, -top);
+      const blob = await c.convertToBlob({ type: 'image/png' });
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      let s = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      return btoa(s);
+    },
+    [png.toString('base64'), glassTop ?? 0],
+  );
+}
+
 const results = [];
 async function pinchCheck(label, z0, z1, row, col) {
   await place(page, z0, row, col);
@@ -97,12 +161,13 @@ async function pinchCheck(label, z0, z1, row, col) {
   await F.pinch(c, d0, d1, { steps: 14, stepMs: 16, release: false });
   await sleep(400);
   const blackGlass = await glassBlack(label + '-during');
-  const during = (await page.screenshot()).toString('base64');
+  const during = await glassShot(label + '-during-page');
   await F.up();
   await settled(page, 600);
   const g1 = await gridBox(page);
-  const after = (await page.screenshot()).toString('base64');
+  const after = await glassShot(label + '-after-page');
   const blackGlassAfter = await glassBlack(label + '-after');
+  // the glass during the gesture against the glass after it, region by region
   const a = await analyse(page, [during, after], regionsOf(g1));
   const row1 = { label, z0, zoom: +g1.zoom.toFixed(3), want: +Math.max(0.1, Math.min(4, z0 * (d1 / d0))).toFixed(3), blackGlass, blackGlassAfter };
   for (const k of Object.keys(a)) if (a[k].diff !== undefined) row1['diff_' + k] = a[k].diff;
@@ -123,6 +188,8 @@ await R.check('canvas limits: largest canvas Petak creates (px), tile size, cach
 
 // 1. empty sheet far from A1
 await page.evaluate(() => window.__doc.newWorkbook());
+await sleep(1500);
+await R.check('where the page is on the glass (screen px from the top)', () => calibrateGlass());
 await sleep(1500);
 for (const [z0, z1] of [[1, 0.1], [0.1, 0.25], [0.25, 0.5], [1, 2], [2, 4], [4, 1]]) await pinchCheck(`FN1300 ${z0}→${z1}`, z0, z1, 1299, 169);
 // 2. the roster (merged cells, fills, large fonts, frozen panes)

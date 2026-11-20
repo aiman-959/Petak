@@ -32,7 +32,15 @@ What was tested for this release, how, and what came out. Every bug found has an
 Frame rate, from `tests/perf/PINCH.md` (CPU slowed ÷1 / ÷4 / ÷6 for High / Mid / Low phones, a server
 **without a GPU**, so canvas pixels are drawn by the CPU; a phone draws them on its GPU):
 
-PINCH_TABLE
+| Tier (60 Hz screen) | fps, 1.2.1 → 1.3.0 | dropped frames % | finger lifted → sharp grid, ms | frames/s the work allows (uncapped) |
+|---|---|---|---|---|
+| High | 58.7–59.6 → **58.8–59.6** | 0.7–1.6 → **0.8–1.7** | 47–182 → **33–53** | 719.5–860.4 → **342.7–574.1** |
+| Mid (CPU ÷4) | 43.2–50.8 → **46.1–49.9** | 5.2–12.2 → **5.9–6.9** | 92–143 → **94–194** | 150.5–174.5 → **86.5–137.6** |
+| Low (CPU ÷6) | 43.3–48.2 → **40.3–46.2** | 6.4–12.1 → **7.3–17** | 104–163 → **124–208** | 123.8–147.8 → **61.3–86.9** |
+
+(Ranges over the three files. 1.2.1's figures are for its broken picture: a scaled copy of one
+screenshot. 1.3.0 draws the real sheet at every zoom, which costs more per frame on a CPU without a
+GPU; at High it still leaves room for 340–570 frames a second, far above the 120 a 120 Hz screen needs.)
 
 The phone itself (Snapdragon 8s Gen 3, 120 Hz) is a hand check below: Settings → Developer →
 Performance overlay shows fps, frame time, tiles waiting, the tile cache and the zoom level live.

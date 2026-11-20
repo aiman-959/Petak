@@ -26,6 +26,7 @@
  * only then is the surface hidden (the hand-off). No React state, no layout of the app and no text
  * measuring happen during a gesture.
  */
+import { ThemeService } from '@univerjs/core';
 import { doc } from '../state/doc';
 import { getTier } from '../device/tier';
 import { mainOrigin, renderUnit, scrollTo, setUniverZoom, viewInfo, type ViewInfo } from './view';
@@ -98,6 +99,22 @@ export interface ViewStats {
 
 const ease = (t: number) => 1 - Math.pow(1 - t, 3);
 const px = (v: number) => Math.round(v * 100) / 100;
+
+/** A CSS colour at the given alpha (colour-mix needs Chrome 111; Petak runs on WebView 100+). */
+function withAlpha(colour: string, a: number): string {
+  const ctx = document.createElement('canvas').getContext('2d');
+  if (!ctx) return colour;
+  ctx.fillStyle = colour;
+  const c = String(ctx.fillStyle); // "#rrggbb" or "rgba(r, g, b, a)"
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(c);
+  if (m) return `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${a})`;
+  const r = /rgba?\(([^)]+)\)/.exec(c);
+  if (r) {
+    const [x, y, z] = r[1].split(',').map((v) => v.trim());
+    return `rgba(${x}, ${y}, ${z}, ${a})`;
+  }
+  return colour;
+}
 
 export class GestureView {
   private wrap: HTMLElement;
@@ -262,6 +279,18 @@ export class GestureView {
     this.root.style.setProperty('--gs-bg', this.tiles.bg);
     this.root.style.setProperty('--gs-hbg', this.tiles.headerBg);
     this.root.style.setProperty('--gs-line', this.tiles.lineColor);
+    // the selection in Univer's colours: primary.600, its fill and header tint at 7 % (Univer's
+    // genNormalSelectionStyle)
+    try {
+      const inj = (doc.api as unknown as { _injector: { get<X>(t: unknown): X } })._injector;
+      const primary = inj.get<{ getColorFromTheme(k: string): string }>(ThemeService).getColorFromTheme('primary.600');
+      if (primary) {
+        this.root.style.setProperty('--gs-sel', primary);
+        this.root.style.setProperty('--gs-sel-fill', withAlpha(primary, 0.07));
+      }
+    } catch {
+      /* the CSS defaults are Petak's green */
+    }
   }
 
   private geometry(v: ViewInfo, parts: SheetParts): Geo {
@@ -472,7 +501,7 @@ export class GestureView {
     // fingers resting (no camera change for ~100 ms): a whole frame for tiles, since a missed frame
     // is not seen while nothing moves. Not more: the fingers may move again any moment.
     const still = this.moving >= Math.round(hz / 10);
-    const rendered = this.handing ? 0 : this.renderJobs(t0, still ? vsync * 0.9 : this.jobBudget);
+    const rendered = this.handing ? 0 : this.renderJobs(t0, still ? vsync * 0.9 : this.jobBudget, still);
     const ms = performance.now() - t0;
     this.stats.frameMs = ms;
     this.stats.frameMsMax = Math.max(this.stats.frameMsMax, ms);
@@ -487,7 +516,7 @@ export class GestureView {
     if (this.anims.length || this.queue.size || this.handing || this.moving < 2 || rendered) this.request();
   }
 
-  private renderJobs(t0: number, budget: number): number {
+  private renderJobs(t0: number, budget: number, still = false): number {
     if (!this.queue.size || !this.parts) return 0;
     const jobs = [...this.queue.entries()].sort((a, b) => a[1].pri - b[1].pri);
     let n = 0;
@@ -495,7 +524,9 @@ export class GestureView {
       // costs vary from tile to tile (text, merges): plan with a margin
       const est = this.tiles.cost(j.kind, j.level) * 1.4;
       // header strips are cheap and keep the labels in place: one per frame is always allowed
-      if (performance.now() - t0 + est > budget && (n > 0 || isCells(j.kind) || !this.fast)) break;
+      // with the fingers resting one tile is always drawn, however slow (a long frame is not seen
+      // while nothing moves; on a slow phone a tile can cost more than a frame and would never come)
+      if (performance.now() - t0 + est > budget && (n > 0 || (!still && (isCells(j.kind) || !this.fast)))) break;
       this.queue.delete(key);
       const t = this.tiles.render(this.parts, key, j.kind, j.level, j.r, this.frameNo);
       if (t) this.request();
