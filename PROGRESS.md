@@ -1,12 +1,36 @@
 # Petak QA: progress and handover
 
-Last updated: 2026-11-19 · Branch `claude/practical-davinci-plplss` (earlier work on `ccr-8fa3d735-i4cb23`) · App version `1.2.1`
+Last updated: 2026-11-20 · Branch `claude/petak-pinch-zoom-audit-ygv8st` (from `claude/practical-davinci-plplss`) · App version `1.3.0`
 
-This file is the handover for the next work session. The brief being worked on is the six-phase
-QA plan (audit → 12 known problems → acceptance criteria → check every function → performance →
-report and build). `AUDIT.md` holds every bug with its ID; this file says where the work stands.
+This file is the handover for the next work session. `AUDIT.md` holds every bug with its ID; this
+file says where the work stands.
 
-## Where we are
+## Release 1.3.0 brief (current)
+
+| Part | State |
+|---|---|
+| 1. Pinch zoom (Critical, P-01) | **Done.** New gesture renderer (`src/grid/gestureView.ts`, `tiles.ts`, `camera.ts`); P-01…P-04 fixed with tests (`tests/e2e/pinch.mjs`, `tests/unit/camera.test.ts`); before / after numbers in `tests/perf/PINCH.md`. Frame rate on the real phone: hand check (TEST-REPORT.md). |
+| 2. Full re-audit | In progress: `tests/e2e/daily.mjs` (a working day with the roster), `tests/e2e/a11y.mjs` (44 dp targets, contrast), Excel opening rules validator (`tests/unit/excel-rules.ts`) written; to run, plus every earlier suite and finding. |
+| 3. Release signing, 1.3.0 build | Guide `docs/RELEASE-SIGNING.md`; CI checks the key, refuses tag releases without it, prints the certificate fingerprint (`SIGNING.txt`); version 1.3.0 (versionCode 5). Needs the four secrets from the user. |
+
+### Part 1 in short (details: AUDIT.md P-01…P-04)
+
+- **What was wrong (1.2.1):** the pinch picture was a copy of Univer's canvas in *opaque* canvases
+  (empty cells black), scaled as one picture together with its headers (a second grid over the real
+  one), nothing new while zooming out, minimum 40 %.
+- **Now:** one camera; map-style tile levels (12.5 … 400 % + the resting zoom) drawn by Univer's own
+  print path; every pane (headers, frozen rows / columns / corner) placed by the same camera; nearest
+  cached level, the start picture or plain grid lines while a tile is missing; 10–400 %; zoom pill,
+  zoom panel (presets 50–200 %, slider), double tap on empty space, Settings → Performance overlay.
+- **Performance findings:** Chrome copies every visible 2D canvas at every frame commit, so tiles are
+  ImageBitmaps in `bitmaprenderer` canvases and Univer's canvas is hidden under the surface; Univer's
+  render loops never stopped (P-04, 60–120 frames a second while idle), now paused when nothing is dirty.
+- **Code map:** `camera.ts` (pure maths, unit-tested), `tiles.ts` (TileStore: render, placeholders,
+  bitmaps, eviction), `gestureView.ts` (surface, panes, layers, frame loop, hand-off, prefetch, pill,
+  overlay), `input.ts` (gestures → view), `view.ts` (`scrollTo` for inactive panes, `setUniverZoom`,
+  `quietRenderLoop`), `ui/ZoomControls.tsx`, `ui/settings.ts`.
+
+## Earlier work (QA plan for 1.2, done)
 
 | Phase | State |
 |---|---|
@@ -14,9 +38,8 @@ report and build). `AUDIT.md` holds every bug with its ID; this file says where 
 | 2. Known problems | **Done** except device fps (K-05), measured in Phase 5 on the emulator / headless only. |
 | 3. Acceptance criteria | **Done.** M-01…M-10, L-01, L-02 fixed with tests (`phase3.mjs`, commit `cdfc0c0`). |
 | 4. Every function and feature | **Done.** 476 functions vs LibreOffice / Excel (FUNCTION-CHECK.md, F-01: 11 fixed); 153 menu commands each pressed by a test (FEATURES.md, `commands.mjs`); round trips of every sample file with LibreOffice recalculation (`roundtrip.mjs`); touches for everyday tasks (`taps.mjs`). Found and fixed F-02…F-06. |
-| 5. Performance and stability | **Done.** `tests/perf/PHASE5.md` (fling / pinch 10 s per tier on 50 large-font rows and 50k × 20, 20 files in a row: no leak), `tests/perf/RESULTS.md` (before / after). Found and fixed F-07. K-05 stays open until measured on the phone. |
-| 6. Report and build | **Done.** AUDIT.md final, TEST-REPORT.md, README (1.2.0 notes, comparison table, limitations), version 1.2.0 (versionCode 3). APK from CI (see below). |
-| After the plan: 1.2.1 | **Done.** L-03: `.ods` files open with their formatting (`src/io/ods.ts`, checked against LibreOffice's own .xlsx). Found and fixed F-08 (broken `styles.xml` for new workbooks with a currency / date format). Version 1.2.1 (versionCode 4). |
+| 5. Performance and stability | **Done.** `tests/perf/PHASE5.md`, `tests/perf/RESULTS.md`. Found and fixed F-07. |
+| 6. Report and build | **Done.** 1.2.0 / 1.2.1 (L-03 `.ods` formatting, F-08). |
 
 ## Fixed and proven by tests
 
@@ -28,7 +51,11 @@ report and build). `AUDIT.md` holds every bug with its ID; this file says where 
 | C-05 | Named ranges not loaded | unit tests |
 | C-06 | Table structured references not understood | unit tests |
 | C-07 | 1900 dates one day off | unit tests |
-| K-05 | Scroll and pinch stutter | GPU compositor built (`src/grid/compositor.ts`); works in e2e. **Device fps not measured yet** |
+| K-05 | Scroll and pinch stutter | 1.3.0: gesture renderer (`gestureView.ts`), `pinch.mjs`, `tests/perf/PINCH.md`. **Device fps: hand check** |
+| P-01 | Pinch zoom: second grid, black areas | `pinch.mjs` (50 steps), `camera.test.ts`, emulator `e2e-pinch.mjs` |
+| P-02 | Frozen columns wider than the screen stopped scrolling | `pinch.mjs` roster 200 / 400 % |
+| P-03 | Zoom right after a workbook appears was lost | `pinch.mjs` (five refusals) |
+| P-04 | Idle app drew 60–120 frames a second | `pinch.mjs` "idle" (0 frames; 1.2.1: 120) |
 | K-09 | Hyperlinks loaded as plain text | `cells2.mjs` (load, Open link, insert, edit, remove, save back) |
 | K-10 | Pictures did not load | `cells2.mjs` (load, select, move, resize, delete, full-screen view, insert, save) |
 | K-12 | Single tap opened the keyboard | `cells.mjs` (tap selects; double tap or formula bar edits) |
@@ -90,7 +117,7 @@ The script therefore opens files only through intents; the system picker is not 
 
 | ID | Problem | State |
 |---|---|---|
-| K-05 | Scroll / pinch speed on the phone | Mid-tier slow frames halved on the server; needs `chrome://inspect` on the Snapdragon 8s Gen 3 (TEST-REPORT.md, "What a test server cannot tell") |
+| K-05 | Scroll / pinch speed on the phone | 1.3.0 renderer measured on the server (`tests/perf/PINCH.md`); 120 Hz on the Snapdragon 8s Gen 3 needs the hand check with Settings → Performance overlay (TEST-REPORT.md) |
 | K-07 | Android ends the app when Play services restarts | Mitigated (session saved 0.4 s after opening); not fixable in the app |
 
 ## Drawing tools rework (K-01 to K-04): done
@@ -125,17 +152,11 @@ What was built (details in `AUDIT.md` under each ID):
 
 ## Next, in order
 
-1. Publish the release: push tag `v1.2.1` from a machine that may push tags (the cloud session cannot);
-   CI then attaches the APKs to a GitHub Release. Until then the APK is the `Petak-apks` artifact of the
-   CI run for the release commit `5ed1688` (run 95, build and emulator jobs green):
-   https://github.com/aiman-959/Petak/actions/runs/44457787218/artifacts/14498028886
-   (`Petak-v1.2.1.apk` 6.1 MB, per-ABI APKs, debug APK, SHA256SUMS.txt, SIZE.md). No release key is set in
-   the repository secrets, so CI signs the release APK with its debug key. (The 1.2.0 build, run 89, is
-   superseded; tag `v1.2.0` was never pushed.)
-2. Hand checks on the phone (TEST-REPORT.md): frame rate at 120 Hz, thermal behaviour, clipboard with
-   other apps, the system picker and share sheet. Also open an `.ods` made on a computer.
-3. Nothing else is open from the plan. Possible next work: conditional formats, comments and pictures
-   from `.ods` / `.xls` files (both open without them, and say so).
+1. Part 2 of the 1.3.0 brief: run every suite (`npm run test:e2e` now includes `pinch`, `daily`,
+   `a11y`), unit tests, LibreOffice function check, round trips; long session memory; findings into
+   AUDIT.md; fix Critical / High.
+2. Part 3: the user adds the four signing secrets (`docs/RELEASE-SIGNING.md`); CI build of 1.3.0; hand
+   checks on the phone (TEST-REPORT.md).
 
 ## How to work in this repo
 
@@ -151,6 +172,7 @@ node tests/e2e/feature-matrix.mjs                    # FEATURES.md, after comman
 node tests/functions/libreoffice.mjs                 # LibreOffice's function results (needs soffice)
 UPDATE_DOCS=1 npx vitest run tests/unit/function-check.test.ts   # FUNCTION-CHECK.md
 node tests/perf/phase5.mjs && node tests/perf/perf50k.mjs        # PHASE5.md, RESULTS.md
+LABEL=after node tests/perf/pinch.mjs && node tests/perf/pinch-report.mjs   # PINCH.md (pinch-before.json: 1.2.1)
 ```
 
 - Touch gestures in tests: `tests/e2e/touch.mjs` (`tap, doubleTap, longPress, drag, fling, pinch`). On the 412 px phone profile use column D
@@ -179,10 +201,22 @@ node tests/perf/phase5.mjs && node tests/perf/perf50k.mjs        # PHASE5.md, RE
 - The grid canvas is stretched on Low / Mid tiers (`canvasStretch`): measure rendering on the screenshot, not on the canvas
 - Device script: never `adb shell uiautomator dump` or Playwright `device.tap/wait` (both cut the page connection); open files through intents
 - Device tests: taps must land between the drawing tool bar and the chips (sheet y ≈ 62–440)
+- Never draw on one canvas with both a raw 2D context and Univer's context wrapper: the wrapper caches
+  state (transform), so Univer's next drawing lands in the wrong place (lost header labels)
+- A 2D canvas on screen costs a copy at every frame the browser commits; show finished pictures as
+  ImageBitmaps (`bitmaprenderer`), hide what is covered (`visibility: hidden`; opacity 0 does not help)
+- `transferFromImageBitmap(null)` allocates a blank full-size bitmap; shrink the element to free one
+- A hidden canvas is no touch target: `GridInput.isGridTarget` accepts its container during a gesture
+- Univer's main pane goes inactive (negative width) when frozen columns are wider than the screen and
+  then ignores scrolling: `scrollTo` sets the panes' scroll itself (P-02)
+- `set-zoom-ratio` throws until Univer's zoom controller exists (a moment after a workbook appears):
+  use `setUniverZoom`, which reports a refusal
+- Perf numbers here come from a GPU-less server (software raster and compositing): compare builds
+  on the same machine, never with a phone
 
 ## Constraints
 
-- Commit and push only to the session's branch (now `claude/practical-davinci-plplss`); no pull request unless asked
+- Commit and push only to the session's branch (now `claude/petak-pinch-zoom-audit-ygv8st`); no pull request unless asked
 - Tag pushes are refused from the cloud session, so the APK link is the GitHub Actions artifact unless a release is created by hand
 - Never commit signing keys
 - The repo was renamed to `aiman-959/Petak`; pushes print "This repository moved" and still succeed

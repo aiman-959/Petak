@@ -137,6 +137,8 @@ export class GestureView {
   onPillTap: () => void = () => {};
   /** the surface is shown and Petak draws the grid */
   active = false;
+  /** High tier: room for extras in every frame */
+  private fast = true;
   /** Univer's canvas while the surface covers it */
   private hidden: HTMLCanvasElement | null = null;
   stats: ViewStats = { frames: 0, frameMs: 0, frameMsMax: 0, fps: 0, pending: 0, tiles: 0, tileBytes: 0, tileCap: 0, tilesRendered: 0, level: 1, zoom: 1, handoffMs: 0, renders: 0, layersShown: 0 };
@@ -183,6 +185,8 @@ export class GestureView {
     })();
     // the tile cache's memory cap (each tile is about 1 MB of canvas)
     this.tiles = new TileStore((tier === 'high' ? 96 : tier === 'mid' ? 56 : 28) * 1048576);
+    // fixed per-frame extras (placeholders, a header strip over the budget) only where they fit
+    this.fast = tier === 'high';
     this.tiles.onEvict = (t) => {
       t.el.remove();
       for (const pe of this.panesEl.values()) pe.shown.delete(t.el);
@@ -465,8 +469,10 @@ export class GestureView {
     // draw missing tiles with the time left in this frame; when the picture rests (or the fingers
     // are up) more: a long frame is not seen then
     // during the hand-off Univer is about to show the sharp grid: no more tiles then
-    const still = this.moving >= 2;
-    const rendered = this.handing ? 0 : this.renderJobs(t0, still ? 2 * vsync : this.jobBudget);
+    // fingers resting (no camera change for ~100 ms): a whole frame for tiles, since a missed frame
+    // is not seen while nothing moves. Not more: the fingers may move again any moment.
+    const still = this.moving >= Math.round(hz / 10);
+    const rendered = this.handing ? 0 : this.renderJobs(t0, still ? vsync * 0.9 : this.jobBudget);
     const ms = performance.now() - t0;
     this.stats.frameMs = ms;
     this.stats.frameMsMax = Math.max(this.stats.frameMsMax, ms);
@@ -486,9 +492,10 @@ export class GestureView {
     const jobs = [...this.queue.entries()].sort((a, b) => a[1].pri - b[1].pri);
     let n = 0;
     for (const [key, j] of jobs) {
-      const est = this.tiles.cost(j.kind, j.level);
+      // costs vary from tile to tile (text, merges): plan with a margin
+      const est = this.tiles.cost(j.kind, j.level) * 1.4;
       // header strips are cheap and keep the labels in place: one per frame is always allowed
-      if (performance.now() - t0 + est > budget && (n > 0 || isCells(j.kind))) break;
+      if (performance.now() - t0 + est > budget && (n > 0 || isCells(j.kind) || !this.fast)) break;
       this.queue.delete(key);
       const t = this.tiles.render(this.parts, key, j.kind, j.level, j.r, this.frameNo);
       if (t) this.request();
@@ -592,7 +599,7 @@ export class GestureView {
       const i = cands.findIndex((c) => c !== 'snap' && badness(c, z) > b);
       cands.splice(i < 0 ? cands.length : i, 0, 'snap');
     }
-    let plainBudget = this.handing ? 0 : 2.5; // ms of placeholders per frame
+    let plainBudget = this.handing ? 0 : this.fast ? 2.5 : 1; // ms of placeholders per frame
     let shownTotal = 0;
     for (const p of this.panes()) {
       const pe = this.panesEl.get(p.id)!;
@@ -939,6 +946,10 @@ export class GestureView {
         scrollTo(v, h.x, h.y);
         unit.scene.makeDirty(true);
         unit.scene.render();
+        // in place right after the redraw: that counts as the first look (one frame sooner)
+        const v2 = viewInfo();
+        const o2 = v2 && mainOrigin(v2);
+        if (o2 && Math.abs(v2.zoom - h.z) < 1e-6 && Math.abs(o2.x - h.x) < 1 && Math.abs(o2.y - h.y) < 1) h.stable = 1;
       }
     }
     if (h.stable >= 2 || h.tries > 90) this.finish();

@@ -91,7 +91,7 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | F-06 | Medium | Saving a workbook that came from .xls / .ods / CSV as .xlsx changed its default font to Calibri 11 and its column widths to 64 px | Fixed (`roundtrip.mjs`, `ooxml-roundtrip.test.ts`) |
 | F-08 | High | Saving a workbook that did not come from an .xlsx (new, .xls, .ods, CSV) wrote a broken `styles.xml` when it had a number format Excel does not have built in (Currency, Euro, any Date from the Format menu) together with a font, fill or border: Excel reports such a file as damaged, Petak lost the number formats on reopening | Fixed in 1.2.1 (`ooxml-roundtrip.test.ts`; `roundtrip.mjs` now checks every saved package is well-formed XML) |
 | F-07 | Low | Univer's command stack grew by about 1.4 entries per tap for the whole session (54 after 40 taps) and kept disposed sheet scenes reachable | Fixed (`commands.mjs`): stays empty; 20 files in a row: no growth in live canvases, heap or renderer memory (`tests/perf/PHASE5.md`) |
-| P-01 | Critical | Pinch zoom: a second, scaled copy of the grid with its own headers over the real one; empty cells and uncovered areas solid black (up to 93 % of the screen); on zoom-in the copy grew over the app bar, formula bar and tabs; zoom-out showed nothing new and stopped at 40 % | Fixed in 1.3.0: new gesture renderer (`src/grid/gestureView.ts`, `tiles.ts`): one camera, tiles at map-style zoom levels, 10–400 %. `tests/e2e/pinch.mjs` 48 / 48 (1.2.1: 3 / 47), emulator `tests/device/e2e-pinch.mjs` |
+| P-01 | Critical | Pinch zoom: a second, scaled copy of the grid with its own headers over the real one; empty cells and uncovered areas solid black (up to 93 % of the screen); on zoom-in the copy grew over the app bar, formula bar and tabs; zoom-out showed nothing new and stopped at 40 % | Fixed in 1.3.0: new gesture renderer (`src/grid/gestureView.ts`, `tiles.ts`): one camera, tiles at map-style zoom levels, 10–400 %. `tests/e2e/pinch.mjs` 50 / 50 (1.2.1: 3 / 47), emulator `tests/device/e2e-pinch.mjs` |
 | P-02 | High | Frozen columns wider than the screen (the roster from 200 % in portrait) made Univer's scrolling pane zero-width; Univer then ignored every scroll, also vertical: the sheet could not be scrolled at all, and a pinch there jumped back after the fingers lifted | Fixed (`view.ts` scrolls the panes itself in that case): `pinch.mjs` roster 200 % / 400 % |
 | P-04 | High | With nothing happening on screen the app still drew 60 frames a second (120 on a 120 Hz screen): Univer's render loops (the grid's and its cell editor's) never stop, every frame made the browser commit and copy the grid's canvas: CPU time, heat and battery for as long as Petak is open | Fixed: `quietRenderLoop` (`view.ts`) pauses each loop when nothing is dirty and wakes it on the first change. `pinch.mjs` "idle": 0 frames a second (1.2.1: 120), a change still drawn within 150 ms |
 | P-03 | Medium | A zoom asked for in the moment after a workbook appears (Univer registers its zoom controller a little later) threw an uncaught error and the zoom was lost | Fixed: zoom requests that Univer refuses are retried by the hand-off (`pinch.mjs`: refused five times, still zooms; 1.2.1 fails the same check) |
@@ -517,17 +517,26 @@ sheet scrolled to FN1300.
   (High / Mid / Low tier) with the farthest evicted first; panes have the sheet colour, nothing can be
   black. After the fingers lift Univer is set to the final zoom and position, renders sharply, and only
   then is the surface removed.
-- **Why DOM layers, not one canvas or WebGL:** measured here (`tests/perf/PINCH.md`), a canvas redrawn
-  every frame (the first version of this fix) cost 4–5 ms of software raster per frame on this GPU-less
-  server and fell to 31–36 fps uncapped on the throttled tiers; WebGL was worse here (11 fps: software GL
-  with a readback). Layers moved by CSS transforms are composited off the main thread: Petak's work per
-  frame is 0.23 ms. On a phone all three would use the GPU; layers use the least main-thread time there too.
+- **Why layers of bitmaps, not one canvas or WebGL:** measured here (`tests/perf/PINCH.md`), a canvas
+  redrawn every frame (the first version of this fix) cost 4–5 ms of software raster per frame on this
+  GPU-less server and fell to 31–36 fps uncapped on the throttled tiers; WebGL was worse here (11 fps:
+  software GL with a readback). Layers moved by CSS transforms are composited off the main thread.
+  Chrome traces then showed that **every 2D canvas on screen is copied at every frame the browser
+  commits**, changed or not (`Canvas2DResourceProvider::ProduceCanvasResource`: 10–33 copies per frame,
+  1.5 s of every 4 s of pinching at Mid; in 1.2.1 too, for Univer's own full-screen canvas under the
+  pinch picture). Tiles and the start-of-gesture picture are therefore ImageBitmaps shown by
+  `bitmaprenderer` canvases (no copy), Univer's canvas is hidden while the opaque surface covers it
+  (touches still reach the grid), and a bitmap is freed by shrinking its element (freeing it with
+  `transferFromImageBitmap(null)` allocated a blank full-size bitmap: 40–60 ms per eviction at Mid).
+  Per frame Petak itself then spends about 0.3 ms placing layers on a High phone, plus tiles drawn
+  within a budget that halves when a frame is late; on Mid / Low phones no placeholder or header strip
+  is drawn beyond that budget.
 - **Also new:** zoom from 10 % to 400 % (Excel's range); pinch → one-finger scroll → pinch again
   without a jump; double tap on empty space away from the data zooms to 200 % and back (on or next to
   data it still edits, as in Excel; Settings can turn it off); zoom pill with the percentage (tap it for
   the zoom panel: presets 50 / 75 / 100 / 150 / 200 % and a 10–400 % slider, also in File → Zoom);
   Settings → Developer → Performance overlay (fps, frame time, tiles pending, tile cache, zoom level).
-- **Proof:** `tests/e2e/pinch.mjs` 48 / 48: at 10, 25, 50, 100, 200, 400 % on an empty sheet at
+- **Proof:** `tests/e2e/pinch.mjs` (50 steps, all pass; 1.2.1: 3 / 47): at 10, 25, 50, 100, 200, 400 % on an empty sheet at
   FN1300, the roster and a 50,000-row file, pinch in and out: no black blocks beyond what the settled
   grid has, every region within 16 of the settled grid (below 20 % zoom: 45 for headers, where Univer
   leaves out row numbers shorter than 4 px and the 25 % tile still has them), the zoom asked for reached;

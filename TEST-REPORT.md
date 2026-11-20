@@ -18,6 +18,25 @@ What was tested for this release, how, and what came out. Every bug found has an
 | Bugs found in this round (Phases 4–5 and 1.2.1) | 8 (F-01 … F-08), all fixed with a test |
 | Findings overall | 47: 7 Critical, 12 Known, 7 High, 10 Medium, 3 Low, F-01 … F-08. **45 fixed**, each with its test; K-05 partly (frame rate still to be measured on the phone), K-07 mitigated (Android ending the app is outside Petak's control) |
 
+## 1.3.0, Part 1: pinch zoom
+
+| Check | 1.2.1 | 1.3.0 |
+|---|---|---|
+| `tests/e2e/pinch.mjs`: screenshots while two fingers rest on the glass at 10 / 25 / 50 / 100 / 200 / 400 %, pinching in and out, on an empty sheet at FN1300, the staff roster and a 50,000-row file; fast, slow, ten in a row, pinch → scroll → pinch, double tap, presets, slider, overlay, idle | **3 / 47** (black up to 92.8 % of the grid in 33 of 38 pinches, a second grid in all 38, 10 zooms unreachable) | **50 / 50** |
+| Solid-black 12 × 12 blocks during a pinch | up to 92.8 % | none beyond the settled grid's own |
+| Difference from the settled grid while the fingers rest (0–255) | 100–250 | under 16 per region |
+| Zoom range | 40–400 % | 10–400 % |
+| Frames the idle app asks for per second | 120 | 0 |
+| `tests/unit/camera.test.ts` (point under the fingers stays put, limits, levels) | – | 13 / 13 |
+
+Frame rate, from `tests/perf/PINCH.md` (CPU slowed ÷1 / ÷4 / ÷6 for High / Mid / Low phones, a server
+**without a GPU**, so canvas pixels are drawn by the CPU; a phone draws them on its GPU):
+
+PINCH_TABLE
+
+The phone itself (Snapdragon 8s Gen 3, 120 Hz) is a hand check below: Settings → Developer →
+Performance overlay shows fps, frame time, tiles waiting, the tile cache and the zoom level live.
+
 ## How it was tested
 
 * **Phone-sized, touch-driven.** The e2e suites run the production build in Chromium with a Pixel 7

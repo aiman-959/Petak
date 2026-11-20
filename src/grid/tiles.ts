@@ -159,9 +159,14 @@ export function present(el: HTMLCanvasElement, w: number, h: number, paint: (ctx
   paint(ctx);
   (el.getContext('bitmaprenderer') as ImageBitmapRenderingContext).transferFromImageBitmap(off.transferToImageBitmap());
 }
-/** Let go of an element's picture (its memory) while the element waits for reuse. */
+/**
+ * Let go of an element's picture (its memory) while the element waits for reuse. Shrinking the
+ * element does it: \`transferFromImageBitmap(null)\` would allocate a blank bitmap of the full size
+ * instead (measured: 40–60 ms per eviction at Mid).
+ */
 export function release(el: HTMLCanvasElement) {
-  if (bitmapsWork()) (el.getContext('bitmaprenderer') as ImageBitmapRenderingContext | null)?.transferFromImageBitmap(null);
+  el.width = 1;
+  el.height = 1;
 }
 
 /** Univer's render objects for the active sheet (null while there is no grid). */
@@ -284,7 +289,7 @@ export class TileStore {
   private store(key: string, kind: TileKind, level: number, r: TileRect, el: HTMLCanvasElement, pw: number, ph: number, plain: boolean, ew: number, eh: number, frame: number, old?: Tile) {
     const bytes = el.width * el.height * 4;
     // a new size or a new element: the renderer places it again
-    const placed = old && old.el === el && old.el.width === el.width && old.el.height === el.height ? old.placed : undefined;
+    const placed = old && old.el === el && old.pw === pw && old.ph === ph ? old.placed : undefined;
     const tile: Tile = { key, kind, level, ...r, el, pw, ph, ver: this.ver, plain, ew, eh, seen: frame, bytes, placed };
     this.tiles.set(key, tile);
     this.bytes += bytes;
