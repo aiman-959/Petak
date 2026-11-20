@@ -1,54 +1,14 @@
 [
  {
   "what": "open roster.xlsx (Open → pick → grid shown)",
-  "ms": 1717
+  "ms": 1720
  },
  {
   "what": "double tap B5 → keyboard",
-  "ms": 269
+  "ms": 289
  },
  {
   "what": "Enter → saved",
-  "ms": 106
- },
- {
-  "what": "drag the fill grip down 3 rows",
-  "ms": 641
- },
- {
-  "what": "Format → Bold",
-  "ms": 785
- },
- {
-  "what": "Data → Sort A→Z",
-  "ms": 870
- },
- {
-  "what": "Data → Filter on",
-  "ms": 799
- },
- {
-  "what": "pinch out (fingers 300 → 120 px)",
-  "ms": 952
- },
- {
-  "what": "pinch back in",
-  "ms": 970
- },
- {
-  "what": "Insert → Picture → pick",
-  "ms": 647
- },
- {
-  "what": "press, drag, release a rectangle",
-  "ms": 847
- },
- {
-  "what": "File → Save .xlsx",
-  "ms": 356
- },
- {
-  "what": "reopen the saved file",
-  "ms": 1562
+  "ms": 112
  }
 ]

@@ -3,7 +3,7 @@
   "suite": "cells",
   "passed": 16,
   "total": 16,
-  "seconds": 22,
+  "seconds": 25,
   "failed": [],
   "ok": true
  },
@@ -11,7 +11,7 @@
   "suite": "cells2",
   "passed": 12,
   "total": 12,
-  "seconds": 24,
+  "seconds": 25,
   "failed": [],
   "ok": true
  },
@@ -19,7 +19,7 @@
   "suite": "draw-touch",
   "passed": 24,
   "total": 24,
-  "seconds": 34,
+  "seconds": 39,
   "failed": [],
   "ok": true
  },
@@ -27,7 +27,7 @@
   "suite": "part2",
   "passed": 16,
   "total": 16,
-  "seconds": 33,
+  "seconds": 92,
   "failed": [],
   "ok": true
  },
@@ -35,7 +35,7 @@
   "suite": "part3",
   "passed": 18,
   "total": 18,
-  "seconds": 11,
+  "seconds": 12,
   "failed": [],
   "ok": true
  },
@@ -43,7 +43,7 @@
   "suite": "part4",
   "passed": 9,
   "total": 9,
-  "seconds": 21,
+  "seconds": 22,
   "failed": [],
   "ok": true
  },
@@ -51,7 +51,7 @@
   "suite": "fonts",
   "passed": 8,
   "total": 8,
-  "seconds": 6,
+  "seconds": 7,
   "failed": [],
   "ok": true
  },
@@ -67,7 +67,7 @@
   "suite": "render",
   "passed": 10,
   "total": 10,
-  "seconds": 21,
+  "seconds": 24,
   "failed": [],
   "ok": true
  },
@@ -75,7 +75,7 @@
   "suite": "features",
   "passed": 19,
   "total": 19,
-  "seconds": 30,
+  "seconds": 31,
   "failed": [],
   "ok": true
  },
@@ -83,7 +83,7 @@
   "suite": "phase3",
   "passed": 10,
   "total": 10,
-  "seconds": 16,
+  "seconds": 18,
   "failed": [],
   "ok": true
  },
@@ -91,7 +91,7 @@
   "suite": "commands",
   "passed": 28,
   "total": 28,
-  "seconds": 93,
+  "seconds": 85,
   "failed": [],
   "ok": true
  },
@@ -99,7 +99,7 @@
   "suite": "roundtrip",
   "passed": 11,
   "total": 11,
-  "seconds": 47,
+  "seconds": 41,
   "failed": [],
   "ok": true
  },
@@ -107,8 +107,44 @@
   "suite": "taps",
   "passed": 13,
   "total": 13,
-  "seconds": 24,
+  "seconds": 27,
   "failed": [],
   "ok": true
+ },
+ {
+  "suite": "pinch",
+  "passed": 46,
+  "total": 50,
+  "seconds": 161,
+  "failed": [
+   "roster: pinch out at 25 %",
+   "roster: pinch out at 50 %",
+   "50k rows: pinch out at 50 %",
+   "fast pinch (3 moves, no pauses) out to 25 %"
+  ],
+  "ok": false
+ },
+ {
+  "suite": "daily",
+  "passed": 9,
+  "total": 12,
+  "seconds": 15,
+  "failed": [
+   "edit a name: double tap, type, Enter",
+   "fill a shift down with the fill grip (D5 → D8)",
+   "draw a rectangle that snaps to cells (starts mid-cell)"
+  ],
+  "ok": false
+ },
+ {
+  "suite": "a11y",
+  "passed": 7,
+  "total": 9,
+  "seconds": 30,
+  "failed": [
+   "every control is at least 44 × 44 dp (or has a 44 dp touch area)",
+   "all text meets WCAG AA contrast"
+  ],
+  "ok": false
  }
 ]

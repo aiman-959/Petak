@@ -95,6 +95,10 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | P-02 | High | Frozen columns wider than the screen (the roster from 200 % in portrait) made Univer's scrolling pane zero-width; Univer then ignored every scroll, also vertical: the sheet could not be scrolled at all, and a pinch there jumped back after the fingers lifted | Fixed (`view.ts` scrolls the panes itself in that case): `pinch.mjs` roster 200 % / 400 % |
 | P-04 | High | With nothing happening on screen the app still drew 60 frames a second (120 on a 120 Hz screen): Univer's render loops (the grid's and its cell editor's) never stop, every frame made the browser commit and copy the grid's canvas: CPU time, heat and battery for as long as Petak is open | Fixed: `quietRenderLoop` (`view.ts`) pauses each loop when nothing is dirty and wakes it on the first change. `pinch.mjs` "idle": 0 frames a second (1.2.1: 120), a change still drawn within 150 ms |
 | P-03 | Medium | A zoom asked for in the moment after a workbook appears (Univer registers its zoom controller a little later) threw an uncaught error and the zoom was lost | Fixed: zoom requests that Univer refuses are retried by the hand-off (`pinch.mjs`: refused five times, still zooms; 1.2.1 fails the same check) |
+| F-09 | High | After a file was opened, the fill grip no longer followed taps: it stayed under the cell selected before (for example the cell Enter moved to), so dragging it filled from that cell and overwrote the cells below it (roster: B7:B8 replaced by B6's name) | Fixed (`FillHandle` listens to every workbook's commands): `daily.mjs` (grip at D5's corner right after the tap; 1.2.1 fails) |
+| F-10 | Low | After typing and Enter the formula bar keeps the keyboard for the next cell (as intended), but Escape (hardware keyboards, Chromebooks, DeX) did nothing then: the keyboard stayed | Fixed (`edit.cancel` closes it also with nothing typed): `daily.mjs` (1.2.1 fails) |
+| F-11 | Medium | 230 controls smaller than 44 × 44 dp without a larger touch area: colour swatches 41, option chips 40 (Find, conditional formats, validation, page setup), font sizes 36, function list rows 41, sheet tabs 34 high, the fill grip's touch area 42, check boxes 20–22 | Fixed (CSS: 44 px or a 44 px touch area; check boxes toggle from their whole 44 px row): `a11y.mjs` 0 below 44 dp, light and dark |
+| F-12 | Medium | Text contrast: the File menu's title was white on white (invisible; the sheet inherited the app bar's text colour); the selected zoom preset was dark text on green (3.3 : 1; dark mode 1.5 : 1) | Fixed: `a11y.mjs` every text at WCAG AA (4.5 : 1, large 3 : 1), light and dark |
 
 Device-only observations (emulator) are in the section "On a real Android WebView" at the end.
 
@@ -580,6 +584,42 @@ sheet scrolled to FN1300.
   own `makeDirty` (every change Univer wants drawn goes through it), with a 4-per-second check as a
   safety net. Proof: `pinch.mjs` "idle" (0 frames a second, 1.2.1: 120; a value set without a touch
   is on screen within 150 ms), and every e2e suite (editing, scrolling, drawing, pictures, charts).
+
+## Release 1.3.0, Part 2: re-audit
+
+What was run (results in TEST-REPORT.md): every earlier e2e suite and unit test again (all earlier
+findings, the 45 fixed ones included, are covered by them); a working day with the roster done with
+touches only and timed (`tests/e2e/daily.mjs`: open, edit a name, fill a shift down, bold a row, sort,
+filter, pinch, picture, a rectangle snapped to cells, save, reopen); every control and text measured for
+touch size and contrast on every surface, light and dark (`tests/e2e/a11y.mjs`); every saved package
+checked against Excel's opening rules (`tests/unit/excel-rules.ts`: strict XML, content types,
+relationships, element order, style indexes, merges, names); a long session (`tests/perf/longsession.mjs`).
+
+### F-09 The fill grip stayed on the old cell after a file was opened
+- **Steps:** open the roster, double tap B5, type a name, Enter (the selection moves to B6), tap D5,
+  drag the grip down to row 8. Found by `daily.mjs`: B7 and B8 were overwritten with B6's name.
+- **Measured:** after the tap the selection was D5 but the grip stayed at B6's corner for as long as
+  measured (750 ms and more); in 1.2.1 too.
+- **Cause:** the grip re-draws when a command runs. It subscribed once, when the app started, through
+  Univer's `FWorkbook.onCommandExecuted`, which only passes on commands of *that* workbook (the blank
+  one); it stays mounted while files are opened, so after opening a file it only moved when something
+  else re-drew it.
+- **Fix:** `doc.onCommand` listens to Univer's command service for any workbook; the grip uses it.
+  The other overlays re-subscribe when the file or selection changes (checked). Undo also restored the
+  overwritten cells, so nothing was lost for good, but only if noticed.
+
+### F-10 Escape did not close the keyboard after Enter
+- **Steps:** double tap a cell, type, Enter, Escape (hardware keyboard). `daily.mjs`.
+- **Cause:** after Enter the bar keeps focus so typing goes on in the next cell (as intended); Escape
+  only acted while something was typed. **Fix:** Escape always releases the bar.
+
+### F-11 Touch targets under 44 dp; F-12 contrast
+- **Steps:** `a11y.mjs` opens the main screen, the six tool panels, the File menu, eleven dialogs and
+  the zoom panel, the long-press menus, in light and dark, and measures every control (a smaller
+  control passes when an invisible touch area reaches 44 dp; a check box when its row does) and every
+  text against what is behind it.
+- **Found:** 230 controls below 44 dp (115 per theme) and 3 texts below AA, listed in the table above.
+- **Fix:** CSS only (sizes, touch areas, the sheet's text colour, the chosen preset's text colour).
 
 ## On a real Android WebView (emulator, API 34)
 

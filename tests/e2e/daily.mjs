@@ -17,6 +17,7 @@ import { unzipSync } from 'fflate';
 import { start, BASE } from './lib.mjs';
 import { touch } from './touch.mjs';
 import { excelProblemsOf } from './excelRulesCli.mjs';
+import { place } from './pinchlib.mjs';
 
 const t = await start('daily');
 const { page, step, ev, idle, val, fresh, openFile, download, tmp } = t;
@@ -78,6 +79,7 @@ await step('edit a name: double tap, type, Enter', async () => {
   assert.equal(await val('B5'), 'Wang Fang');
   await page.keyboard.press('Escape');
   await page.waitForTimeout(150);
+  // F-10: after Enter the bar keeps the keyboard for the next cell; Escape closes it (1.2.1: stayed)
   assert.equal(await keyboardFocus(), false, 'the keyboard goes away after Escape');
 });
 await step('fill a shift down with the fill grip (D5 → D8)', async () => {
@@ -86,6 +88,8 @@ await step('fill a shift down with the fill grip (D5 → D8)', async () => {
   await T.tap(p.x, p.y);
   await page.waitForTimeout(200);
   const grip = await (await page.waitForSelector('.fill-handle')).boundingBox();
+  // F-09: the grip follows the tap in an opened file (1.2.1: it stayed on B6 and filled B6 down)
+  assert.ok(Math.abs(grip.x - (p.x1 - 14)) < 3 && Math.abs(grip.y - (p.y1 + 10)) < 3, `grip at D5's corner: ${JSON.stringify(grip)} vs ${p.x1},${p.y1}`);
   const d8 = await at('D8');
   await timed('drag the fill grip down 3 rows', async () => {
     await T.drag({ x: grip.x + grip.width / 2, y: grip.y + grip.height / 2 }, { x: grip.x + grip.width / 2, y: d8.y + 4 }, { steps: 10, hold: 80 });
@@ -156,12 +160,13 @@ await step('draw a rectangle that snaps to cells (starts mid-cell)', async () =>
   await tapEl('[data-testid=tool-draw]');
   await page.waitForSelector('[data-testid=draw-layer]');
   await page.click('[data-testid=draw-tool-rect]');
-  const p = await ev(() => { const v = window.__drawView(); const r = document.querySelector('[data-testid=draw-layer]').getBoundingClientRect(); return { x: r.left + v.ox, y: r.top + v.oy, z: v.zoom }; });
-  // B8 middle → D10 middle in sheet px (cells 88 wide); drawn shapes fit to whole cells
-  const a = await ev(() => { const v = window.__view.viewInfo(); return { x: v.colAcc[0] + 40, y: v.rowAcc[6] + 10 }; });
-  const b = await ev(() => { const v = window.__view.viewInfo(); return { x: v.colAcc[2] + 40, y: v.rowAcc[8] + 10 }; });
+  // the picture step scrolled to row 20: back to the top rows (row 4 under the frozen header)
+  await place(page, 1, 3, 0);
+  // from inside B8 (not its corner) to inside D10, a little off the centres; the shape fits to cells
+  const a = await at('B8');
+  const b = await at('D10');
   await timed('press, drag, release a rectangle', async () => {
-    await T.drag({ x: p.x + a.x * p.z, y: p.y + a.y * p.z }, { x: p.x + b.x * p.z, y: p.y + b.y * p.z }, { steps: 10 });
+    await T.drag({ x: a.x + 9, y: a.y + 5 }, { x: b.x - 7, y: b.y + 4 }, { steps: 10 });
     await page.waitForTimeout(200);
   });
   const s = await ev(() => window.__doc.meta.drawings?.[window.__doc.wb.getActiveSheet().getSheetId()]?.shapes.at(-1));

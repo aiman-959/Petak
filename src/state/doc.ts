@@ -137,6 +137,14 @@ class Doc {
     this.snap = { ...this.snap, ...patch, version: this.snap.version + 1 };
     this.listeners.forEach((l) => l());
   }
+  /**
+   * Every command of whichever workbook is open. Univer's \`FWorkbook.onCommandExecuted\` only passes on
+   * commands of that one workbook: a listener made on the first workbook went deaf after a file was
+   * opened (the fill grip stayed on the old cell, F-09).
+   */
+  onCommand(cb: (info: { id: string; type?: number; params?: unknown }) => void): { dispose(): void } {
+    return this.injector<ICommandService>(ICommandService).onCommandExecuted(cb as never);
+  }
   private injector<T>(token: unknown): T {
     return (this.h.api as unknown as { _injector: { get<X>(t: unknown): X } })._injector.get<T>(token);
   }

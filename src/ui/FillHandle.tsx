@@ -39,7 +39,8 @@ export function FillHandle() {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => tick((x) => x + 1));
     };
-    const d1 = doc.wb.onCommandExecuted(again);
+    // all workbooks: this grip stays mounted while files are opened (F-09)
+    const d1 = doc.onCommand(again);
     const d2 = doc.subscribe(again);
     return () => {
       d1.dispose();

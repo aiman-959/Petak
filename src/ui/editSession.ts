@@ -144,10 +144,13 @@ export const edit = {
     }
     return ok;
   },
+  /**
+   * Throw the typing away and close the keyboard. Also when nothing is typed yet: after Enter the
+   * bar keeps the keyboard up for the next cell, and Escape must still close it (F-10).
+   */
   cancel() {
-    if (!st.editing) return;
-    set({ editing: false, liveRef: null, text: '' });
-    inputEl?.blur();
+    if (st.editing) set({ editing: false, liveRef: null, text: '' });
+    if (inputEl && document.activeElement === inputEl) inputEl.blur();
   },
 };
 

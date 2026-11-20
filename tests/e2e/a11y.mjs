@@ -81,10 +81,15 @@ async function measure(where) {
         [cx, cy + 21],
       ].filter(([x, y]) => {
         const e = document.elementFromPoint(x, y);
-        return e && (e === el || el.contains(e));
+        // a check box's label is its touch area (tapping the text toggles it)
+        const labels = el.labels ? [...el.labels] : [];
+        return e && (e === el || el.contains(e) || labels.some((l) => l === e || l.contains(e)));
       }).length;
       // inline links / text inputs that are wide: height is what matters
       if (hits === 4) continue;
+      // a check box or radio inside a label row of at least 44 × 44: the whole row toggles it
+      const lab = el.labels?.[0]?.getBoundingClientRect();
+      if (lab && lab.width >= 44 && lab.height >= 44) continue;
       if ((el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') && b.height >= 40) continue;
       small.push({ where, what: label(el), w: Math.round(b.width), h: Math.round(b.height), testid: el.getAttribute('data-testid') || '' });
     }
