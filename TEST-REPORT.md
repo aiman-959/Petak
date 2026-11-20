@@ -17,7 +17,7 @@ What was tested for this release, how, and what came out. Every bug found has an
 | Saved files against Excel's opening rules (`excel-rules.ts`: XML, parts, relationships, element order, styles, merges, names) | every sample and every Petak save: **0 problems** |
 | Excel functions, each with a worked example | **476 / 476** give Excel's result (LibreOffice 24.2.7 re-run today: same reference values) |
 | Sample files: open → edit → save → reopen unchanged, LibreOffice recalculates | **9 / 9** (xlsx from Excel and LibreOffice, xlsm, xls, two ods, csv) |
-| Long session (`longsession.mjs`, 120 rounds) | LONG_SESSION |
+| Long session (`longsession.mjs`, 120 rounds, 9 min, 15 files opened) | heap 25.7 → 31.2 MB, DOM nodes 904 → 990, listeners and canvases flat, tile cache under its cap, no errors, nothing stuck |
 | Findings in 1.3.0 | P-01 (Critical), P-02, P-04, F-09 (High), P-03, F-11, F-12 (Medium), F-10 (Low): **all fixed**, each with its test |
 | Findings overall | 55 (47 up to 1.2.1, 8 in 1.3.0); **53 fixed**, each with its test; K-05 (frame rate on the phone: hand check) and K-07 (Android ends the app when Play services restarts: mitigated) as before |
 
@@ -89,7 +89,16 @@ counts and indexes, merged cells, sheet names, defined names). It is run on ever
 file Petak saves in the unit tests (unchanged and edited, from .xlsx, .xlsm, .xls, .ods and .csv): no
 problems. Its self-tests prove it catches each kind of damage.
 
-**Long session** (`tests/perf/longsession.mjs`): LONG_DETAIL
+**Long session** (`tests/perf/longsession.mjs`): 120 rounds in 9 minutes of what a user does all day
+(a file opened every eighth round: roster, QM report, a new workbook; typing by touch and keyboard, a
+formula, a row in and out, undo / redo, flings, two pinches). Measured every fourth round after a full
+garbage collection: JS heap 25.7 → 31.2 MB, DOM nodes 904 → 990, event listeners 523 → 522, canvases
+outside the tile cache 2 → 2, the tile cache 29–48 MB under its 56 MB cap; no uncaught errors; at the
+end a formula still computes and no gesture is stuck. A heap snapshot comparison 24 rounds apart
+(same state) puts 60 % of the heap growth in V8's compiled code (it levels off) and the rest in small
+caches; none of Petak's own objects (tiles, views, canvases) accumulate. An earlier run that opened the
+files through Playwright's file chooser grew by 6 listeners and about 25 nodes per file: that is the
+test tool keeping each chooser's hidden input alive (a known Playwright behaviour), not Petak.
 
 ## How it was tested
 
