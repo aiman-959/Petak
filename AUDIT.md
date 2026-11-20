@@ -8,11 +8,11 @@ Status column: **Open** = not fixed yet; **Fixed** = fixed and covered by the na
 (phone-profile Playwright suites in `tests/e2e/`, unit tests in `tests/unit/`). **Partly** = some of it
 fixed, the rest says what remains. This file is updated at the end of every phase.
 
-**Final state for release 1.2.1:** 47 findings (7 Critical, 12 Known, 7 High, 10 Medium, 3 Low, F-01…F-08).
-45 fixed, each with the test that proves it; K-05 partly (frame rate to be measured on the phone);
-K-07 mitigated (Android ends the app when Play services restarts; the session survives).
-1.2.1 adds L-03 (`.ods` formatting) and F-08 (found while testing it) to 1.2.0.
-Test results: [TEST-REPORT.md](TEST-REPORT.md).
+**Final state for release 1.3.0:** 55 findings: 47 up to 1.2.1 (7 Critical, 12 Known, 7 High,
+10 Medium, 3 Low, F-01…F-08) and 8 in 1.3.0 (P-01 Critical; P-02, P-04, F-09 High; P-03, F-11, F-12
+Medium; F-10 Low). 53 fixed, each with the test that proves it; K-05 partly (frame rate on the phone
+is a hand check, see TEST-REPORT.md); K-07 mitigated (Android ends the app when Play services
+restarts; the session survives). Test results: [TEST-REPORT.md](TEST-REPORT.md).
 
 ## How the audit was done
 
@@ -55,7 +55,7 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | K-02 | High | Polyline: adds a point on every tap, hard to finish | Fixed (`draw-touch.mjs`) |
 | K-03 | High | Line tool does not behave as press, drag, release on the phone | Fixed (`draw-touch.mjs`; emulator run 23 draws a line by press–drag–release) |
 | K-04 | High | Nothing snaps when a shape starts in the middle of a cell | Fixed (`draw.test.ts`, `draw-touch.mjs`) |
-| K-05 | High | Scrolling and pinch zoom are slow and stutter | Partly: Mid-tier slow frames halved, High tier 58–60 fps in touch flings (`PHASE5.md`); needs a measurement on the phone |
+| K-05 | High | Scrolling and pinch zoom are slow and stutter | Partly: 1.3.0 gesture renderer (P-01): pinch at High tier 58.8–59.6 fps with room for 340–570 fps, Mid / Low on a par with 1.2.1 while showing the real sheet (`tests/perf/PINCH.md`); flings 58–60 fps (`PHASE5.md`). The phone at 120 Hz: hand check with the performance overlay |
 | K-06 | High | Excel fonts do not display correctly | Fixed (`fonts.mjs`, `fonts.test.ts`); look on a phone still to check |
 | K-07 | High | Opening another file does nothing on the phone | Cause found; mitigated (`files.mjs`). Opening a second file works on the emulator |
 | K-08 | High | Grid lines and borders are broken / faded at zoom ≠ 100 % | Fixed (`render.mjs`) |
@@ -91,7 +91,7 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | F-06 | Medium | Saving a workbook that came from .xls / .ods / CSV as .xlsx changed its default font to Calibri 11 and its column widths to 64 px | Fixed (`roundtrip.mjs`, `ooxml-roundtrip.test.ts`) |
 | F-08 | High | Saving a workbook that did not come from an .xlsx (new, .xls, .ods, CSV) wrote a broken `styles.xml` when it had a number format Excel does not have built in (Currency, Euro, any Date from the Format menu) together with a font, fill or border: Excel reports such a file as damaged, Petak lost the number formats on reopening | Fixed in 1.2.1 (`ooxml-roundtrip.test.ts`; `roundtrip.mjs` now checks every saved package is well-formed XML) |
 | F-07 | Low | Univer's command stack grew by about 1.4 entries per tap for the whole session (54 after 40 taps) and kept disposed sheet scenes reachable | Fixed (`commands.mjs`): stays empty; 20 files in a row: no growth in live canvases, heap or renderer memory (`tests/perf/PHASE5.md`) |
-| P-01 | Critical | Pinch zoom: a second, scaled copy of the grid with its own headers over the real one; empty cells and uncovered areas solid black (up to 93 % of the screen); on zoom-in the copy grew over the app bar, formula bar and tabs; zoom-out showed nothing new and stopped at 40 % | Fixed in 1.3.0: new gesture renderer (`src/grid/gestureView.ts`, `tiles.ts`): one camera, tiles at map-style zoom levels, 10–400 %. `tests/e2e/pinch.mjs` 50 / 50 (1.2.1: 3 / 47), emulator `tests/device/e2e-pinch.mjs` |
+| P-01 | Critical | Pinch zoom: a second, scaled copy of the grid with its own headers over the real one; empty cells and uncovered areas solid black (up to 93 % of the screen); on zoom-in the copy grew over the app bar, formula bar and tabs; zoom-out showed nothing new and stopped at 40 % | Fixed in 1.3.0: new gesture renderer (`src/grid/gestureView.ts`, `tiles.ts`): one camera, tiles at map-style zoom levels, 10–400 %. `tests/e2e/pinch.mjs` 50 / 50 (1.2.1: 3 / 47), emulator `tests/device/e2e-pinch.mjs` 16 / 16 on screen captures |
 | P-02 | High | Frozen columns wider than the screen (the roster from 200 % in portrait) made Univer's scrolling pane zero-width; Univer then ignored every scroll, also vertical: the sheet could not be scrolled at all, and a pinch there jumped back after the fingers lifted | Fixed (`view.ts` scrolls the panes itself in that case): `pinch.mjs` roster 200 % / 400 % |
 | P-04 | High | With nothing happening on screen the app still drew 60 frames a second (120 on a 120 Hz screen): Univer's render loops (the grid's and its cell editor's) never stop, every frame made the browser commit and copy the grid's canvas: CPU time, heat and battery for as long as Petak is open | Fixed: `quietRenderLoop` (`view.ts`) pauses each loop when nothing is dirty and wakes it on the first change. `pinch.mjs` "idle": 0 frames a second (1.2.1: 120), a change still drawn within 150 ms |
 | P-03 | Medium | A zoom asked for in the moment after a workbook appears (Univer registers its zoom controller a little later) threw an uncaught error and the zoom was lost | Fixed: zoom requests that Univer refuses are retried by the hand-off (`pinch.mjs`: refused five times, still zooms; 1.2.1 fails the same check) |
@@ -535,6 +535,12 @@ sheet scrolled to FN1300.
   Per frame Petak itself then spends about 0.3 ms placing layers on a High phone, plus tiles drawn
   within a budget that halves when a frame is late; on Mid / Low phones no placeholder or header strip
   is drawn beyond that budget.
+- **Found on the emulator while building it:** the Android emulator (Low tier, a slow CPU) showed plain
+  grid lines without text while the fingers rested after zooming out from 400 % on the 50,000-row file:
+  a tile that costs more than a whole frame was never drawn while fingers were down. With the fingers
+  resting, one tile per frame is now always drawn (a long frame is not seen while nothing moves). The
+  device test now judges *screen captures* (`adb screencap`) aligned to the page: on Android, DevTools
+  page screenshots showed finished tiles the glass did not have yet. Emulator: 16 / 16 (was 12 / 16).
 - **Also new:** zoom from 10 % to 400 % (Excel's range); pinch → one-finger scroll → pinch again
   without a jump; double tap on empty space away from the data zooms to 200 % and back (on or next to
   data it still edits, as in Excel; Settings can turn it off); zoom pill with the percentage (tap it for

@@ -11,7 +11,7 @@
   "suite": "cells2",
   "passed": 12,
   "total": 12,
-  "seconds": 25,
+  "seconds": 27,
   "failed": [],
   "ok": true
  },
@@ -43,7 +43,7 @@
   "suite": "part4",
   "passed": 9,
   "total": 9,
-  "seconds": 22,
+  "seconds": 23,
   "failed": [],
   "ok": true
  },
@@ -75,7 +75,7 @@
   "suite": "features",
   "passed": 19,
   "total": 19,
-  "seconds": 31,
+  "seconds": 32,
   "failed": [],
   "ok": true
  },
@@ -91,7 +91,7 @@
   "suite": "commands",
   "passed": 28,
   "total": 28,
-  "seconds": 85,
+  "seconds": 88,
   "failed": [],
   "ok": true
  },
@@ -107,44 +107,32 @@
   "suite": "taps",
   "passed": 13,
   "total": 13,
-  "seconds": 27,
+  "seconds": 28,
   "failed": [],
   "ok": true
  },
  {
   "suite": "pinch",
-  "passed": 46,
+  "passed": 50,
   "total": 50,
-  "seconds": 161,
-  "failed": [
-   "roster: pinch out at 25 %",
-   "roster: pinch out at 50 %",
-   "50k rows: pinch out at 50 %",
-   "fast pinch (3 moves, no pauses) out to 25 %"
-  ],
-  "ok": false
+  "seconds": 166,
+  "failed": [],
+  "ok": true
  },
  {
   "suite": "daily",
-  "passed": 9,
+  "passed": 12,
   "total": 12,
-  "seconds": 15,
-  "failed": [
-   "edit a name: double tap, type, Enter",
-   "fill a shift down with the fill grip (D5 → D8)",
-   "draw a rectangle that snaps to cells (starts mid-cell)"
-  ],
-  "ok": false
+  "seconds": 16,
+  "failed": [],
+  "ok": true
  },
  {
   "suite": "a11y",
-  "passed": 7,
+  "passed": 9,
   "total": 9,
   "seconds": 30,
-  "failed": [
-   "every control is at least 44 × 44 dp (or has a 44 dp touch area)",
-   "all text meets WCAG AA contrast"
-  ],
-  "ok": false
+  "failed": [],
+  "ok": true
  }
 ]

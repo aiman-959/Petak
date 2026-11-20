@@ -18,8 +18,8 @@ Numbers match when they agree to 7 significant digits.
 | Function | Formula | Petak | Excel | LibreOffice | Why |
 |---|---|---|---|---|---|
 | BESSELJ | `=BESSELJ(1.9,2)` | 0.32992582867 | 0.329925829 | 0.329925727692 | Excel's documented result; LibreOffice computes a value 1e-7 closer to the exact Bessel function |
-| DURATION | `=DURATION(39448,42370,0.08,0.09,2,1)` | 5.9937749555 | 5.993775 | 5.99195013803 | Excel's documented example; LibreOffice uses a different coupon-period rule for basis 1 |
-| MDURATION | `=MDURATION(39448,42370,0.08,0.09,2,1)` | 5.7356698139 | 5.73567 | 5.73392357706 | Excel's documented example; same coupon-period difference as DURATION |
+| DURATION | `=DURATION(39448,42370,0.08,0.09,2,1)` | 5.9937749555 | 5.993775 | 5.99195013803 | Excel's documented example; LibreOffice gives a slightly different duration for basis 1 (actual/actual) |
+| MDURATION | `=MDURATION(39448,42370,0.08,0.09,2,1)` | 5.7356698139 | 5.73567 | 5.73392357706 | Excel's documented example; same basis-1 difference as DURATION |
 | EXPAND | `=COUNTA(EXPAND(A1:A2,3,2,0))` | 6 | 6 | 1 | LibreOffice 24.2 has no EXPAND (it reads it as one error value); Excel pads to 3×2, so COUNTA is 6 |
 | FILTER | `=SUM(FILTER(A1:A10,A1:A10>5))` | 38 | 38 | "#VALUE!" | LibreOffice 24.2 has no FILTER; Excel sums 7+9+10+12 |
 | COUNT | `=COUNT(G1:G10)` | 3 | 3 | 5 | Excel does not count TRUE/FALSE held in cells (only 3, 0 and 7 here); LibreOffice stores booleans as numbers and counts them |

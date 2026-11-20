@@ -10,12 +10,15 @@ a precision drawing layer with true-scale export, JavaScript macros and a Power-
 License: **GNU GPL v3** (see [LICENSE](LICENSE)). Third-party components: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 > **Download:** the latest APK is on the [Releases page](https://github.com/aiman-959/petak/releases/latest)
-> (`Petak-v1.2.1.apk`, 6.1 MB). See [Install](#install).
+> (`Petak-v1.3.0.apk`). See [Install](#install).
 >
-> **1.2** is a quality release: every function, menu command and sample file was tested on a phone
-> screen, and 45 problems were fixed. 1.2.1 adds `.ods` files with their formatting and fixes new
-> workbooks saved with a currency or date format. What was tested and how: [TEST-REPORT.md](TEST-REPORT.md);
-> every bug with its fix and test: [AUDIT.md](AUDIT.md).
+> **1.3** rebuilds pinch zoom like a map app: one grid that zooms smoothly from 10 % to 400 % around
+> your fingers, headers and frozen panes in step, never black (1.2 showed a second grid and black areas
+> while pinching). Also: a zoom pill and zoom panel, double tap to zoom, a performance overlay, an idle
+> app that no longer draws 60–120 frames a second, a fill grip that follows your taps in opened files,
+> 44 dp touch targets everywhere, and release signing so updates install over the previous version.
+> What was tested and how: [TEST-REPORT.md](TEST-REPORT.md); every bug with its fix and test:
+> [AUDIT.md](AUDIT.md).
 
 | Phone | Format tools | Drawing mode | Dark mode |
 |---|---|---|---|
@@ -55,7 +58,9 @@ Screenshots come from the production web build at phone/tablet sizes (`node scri
   colour pairs pass WCAG AA (checked by `tests/unit/contrast.test.ts`). Wordmark in Space Grotesk Bold.
 * **Phone:** bottom toolbar (Edit · Format · Insert · Draw · Data · Tools) opening bottom sheets; formula bar
   docked at the bottom above the keyboard. **Tablet (≥ 760 dp):** formula bar on top and a side panel.
-* Touch targets ≥ 44 dp, pinch-to-zoom, light and dark mode.
+* Touch targets ≥ 44 dp (measured on every screen by `tests/e2e/a11y.mjs`), light and dark mode.
+* **Zoom:** pinch from 10 % to 400 %; the zoom pill shows the zoom (tap it for presets 50–200 % and a
+  slider, also File → Zoom); double tap an empty area to zoom in and back (Settings can turn it off).
 
 ### Performance and device support
 * Android **8.0+** (minSdk 26), target SDK 36, **arm64-v8a, armeabi-v7a, x86_64**. Tuned on a Snapdragon 8s Gen 3;
@@ -70,6 +75,11 @@ Screenshots come from the production web build at phone/tablet sizes (`node scri
 
 * **Canvas rendering, no DOM cells.** The grid, sparklines and drawings are painted on Univer's canvas (GPU-composited
   by the WebView); only visible cells are drawn. Scrolling and zooming move the canvas, not thousands of elements.
+* **Pinch zoom like a map** (`src/grid/gestureView.ts`): during a gesture the sheet is shown from tiles drawn by
+  Univer at fixed zoom levels (12.5–400 % plus the resting zoom), held as ImageBitmaps and moved by the compositor;
+  the nearest cached level fills in until the sharp tile is drawn. Tile memory is capped per tier (96 / 56 / 28 MB).
+  Settings → Developer → *Performance overlay* shows fps, frame time, tiles waiting, cache and zoom level live.
+* **Nothing runs when nothing changes:** Univer's render loops pause while the sheet is unchanged (no frames, no battery).
 * **Workers for everything heavy:** formulas (HyperFormula), file parsing/writing, transforms, macros, DuckDB.
 * **SharedArrayBuffer when available, with a fallback.** The app serves COOP/COEP headers (Vite and the Android
   WebView client). When the page is cross-origin isolated, the UI and workers share a control block: workers read the
@@ -82,7 +92,8 @@ Screenshots come from the production web build at phone/tablet sizes (`node scri
 * Incremental autosave (changed 2,000-row chunks only), incremental recalculation, chunked loading with progress.
 * Performance tests: fling and pinch on each tier with 50,000 × 20 and large-font files, 20 files in a row
   ([tests/perf/PHASE5.md](tests/perf/PHASE5.md)); 50,000 × 20 load, edit, autosave, restore and scroll
-  ([tests/perf/RESULTS.md](tests/perf/RESULTS.md)).
+  ([tests/perf/RESULTS.md](tests/perf/RESULTS.md)); pinch zoom before / after 1.3.0
+  ([tests/perf/PINCH.md](tests/perf/PINCH.md)); a long session (`tests/perf/longsession.mjs`).
 
 ### App size
 Release APK **6.1 MB** (budget 40 MB). Full breakdown per build and module: [SIZE.md](SIZE.md) (`npm run size`).
@@ -98,13 +109,15 @@ Release APK **6.1 MB** (budget 40 MB). Full breakdown per build and module: [SIZ
 ## Install
 
 1. On your phone, open the [latest release](https://github.com/aiman-959/petak/releases/latest) and download
-   `Petak-v1.2.1.apk` (universal). ABI-specific files (`-arm64-v8a`, `-armeabi-v7a`, `-x86_64`) are also there.
+   `Petak-v1.3.0.apk` (universal). ABI-specific files (`-arm64-v8a`, `-armeabi-v7a`, `-x86_64`) are also there.
 2. Open it and allow "Install unknown apps" for your browser or file manager when Android asks.
-3. Launch **Petak** and tap the folder icon to open a spreadsheet.
+3. Launch **Petak** and tap the folder icon to open a spreadsheet. About shows the version.
 
-Check the download against `SHA256SUMS.txt` from the same release if you like. Release APKs built without the
-repository's signing secrets are signed with the CI debug key. If you later install a build signed with a different
-key, uninstall the old app first (Android refuses updates signed by another key).
+Check the download against `SHA256SUMS.txt` from the same release if you like; `SIGNING.txt` shows the
+certificate it was signed with. Builds signed with the repository's release key install over each other.
+Builds made without that key (before 1.3.0, or forks) are signed with a throwaway key: to move from one of
+those to a release-key build, save your work, uninstall once, then install
+([docs/RELEASE-SIGNING.md](docs/RELEASE-SIGNING.md), step 5).
 
 ---
 
@@ -167,10 +180,12 @@ Without either, `assembleRelease` signs with the debug key so the APK can still 
 
 ### Continuous integration
 `.github/workflows/android.yml` runs the unit tests and builds debug and release APKs (universal + per ABI) on every push,
-with the size report in the job summary. Pushing a tag such as `v1.2.1` creates a GitHub Release with the APKs,
-`SHA256SUMS.txt` and `SIZE.md` attached. Add the repository secrets
-`KEYSTORE_BASE64` (`base64 -w0 petak-release.jks`), `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD`
-to get a signed release APK.
+with the size report and the signing certificate in the job summary. Pushing a tag such as `v1.3.0` creates a GitHub
+Release with the APKs, `SHA256SUMS.txt`, `SIGNING.txt` and `SIZE.md` attached (only with the release key).
+Release signing, step by step (make the key, add the four secrets `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`,
+`KEY_ALIAS`, `KEY_PASSWORD`): [docs/RELEASE-SIGNING.md](docs/RELEASE-SIGNING.md). The workflow checks the key
+before building and signs both the release and the debug APK with it, so every later build installs over the
+previous one.
 
 ### Develop in the browser
 

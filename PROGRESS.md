@@ -10,8 +10,8 @@ file says where the work stands.
 | Part | State |
 |---|---|
 | 1. Pinch zoom (Critical, P-01) | **Done.** New gesture renderer (`src/grid/gestureView.ts`, `tiles.ts`, `camera.ts`); P-01…P-04 fixed with tests (`tests/e2e/pinch.mjs`, `tests/unit/camera.test.ts`); before / after numbers in `tests/perf/PINCH.md`. Frame rate on the real phone: hand check (TEST-REPORT.md). |
-| 2. Full re-audit | In progress: `tests/e2e/daily.mjs` (a working day with the roster), `tests/e2e/a11y.mjs` (44 dp targets, contrast), Excel opening rules validator (`tests/unit/excel-rules.ts`) written; to run, plus every earlier suite and finding. |
-| 3. Release signing, 1.3.0 build | Guide `docs/RELEASE-SIGNING.md`; CI checks the key, refuses tag releases without it, prints the certificate fingerprint (`SIGNING.txt`); version 1.3.0 (versionCode 5). Needs the four secrets from the user. |
+| 2. Full re-audit | **Done.** Every suite again (17 suites 277 / 277, unit 200 / 200), LibreOffice function check re-run (476 / 476), new `daily.mjs` (a working day by touch, timed), `a11y.mjs` (44 dp, WCAG AA), Excel opening-rules validator on every save, long session. Found and fixed F-09 (High, fill grip), F-10, F-11 (230 small targets), F-12 (contrast). |
+| 3. Release signing, 1.3.0 build | Guide `docs/RELEASE-SIGNING.md`; CI checks the key, signs release *and* debug APKs with it, refuses tag releases without it, prints the certificate (`SIGNING.txt`, job summary); version 1.3.0 (versionCode 5), About shows it. **Waiting for the user:** the four secrets, then "Run workflow". Hand checks: TEST-REPORT.md. |
 
 ### Part 1 in short (details: AUDIT.md P-01…P-04)
 
@@ -56,6 +56,10 @@ file says where the work stands.
 | P-02 | Frozen columns wider than the screen stopped scrolling | `pinch.mjs` roster 200 / 400 % |
 | P-03 | Zoom right after a workbook appears was lost | `pinch.mjs` (five refusals) |
 | P-04 | Idle app drew 60–120 frames a second | `pinch.mjs` "idle" (0 frames; 1.2.1: 120) |
+| F-09 | Fill grip stayed on the old cell after opening a file (overwrote cells) | `daily.mjs` (1.2.1 fails) |
+| F-10 | Escape did not close the keyboard after Enter | `daily.mjs` (1.2.1 fails) |
+| F-11 | 230 controls under 44 dp | `a11y.mjs` |
+| F-12 | File menu title invisible; zoom preset contrast | `a11y.mjs` |
 | K-09 | Hyperlinks loaded as plain text | `cells2.mjs` (load, Open link, insert, edit, remove, save back) |
 | K-10 | Pictures did not load | `cells2.mjs` (load, select, move, resize, delete, full-screen view, insert, save) |
 | K-12 | Single tap opened the keyboard | `cells.mjs` (tap selects; double tap or formula bar edits) |
@@ -92,12 +96,13 @@ file says where the work stands.
 Also new: recent files, clear messages when a file cannot be opened, Format → Font & size with
 your own font files, Android Back button handled by the page.
 
-### Last full test run (release 1.2.1)
+### Last full test run (release 1.3.0)
 
 | Suite | Result |
 |---|---|
-| Unit (Vitest, 26 files) | 168 / 168 |
-| `npm run test:e2e` (14 suites, `tests/e2e/out/summary.json`) | 206 / 206 |
+| Unit (Vitest, 28 files) | 200 / 200 |
+| `npm run test:e2e` (17 suites, `tests/e2e/out/summary.json`) | 277 / 277 |
+| Emulator `e2e-pinch.mjs` (screen captures) | 16 / 16 |
 
 Emulator (CI `device` job, Android 14 WebView): line, rectangle (fit to cells, tool back to
 Select), tap-select, polyline by double tap and Back out of drawing mode all work.
@@ -152,11 +157,13 @@ What was built (details in `AUDIT.md` under each ID):
 
 ## Next, in order
 
-1. Part 2 of the 1.3.0 brief: run every suite (`npm run test:e2e` now includes `pinch`, `daily`,
-   `a11y`), unit tests, LibreOffice function check, round trips; long session memory; findings into
-   AUDIT.md; fix Critical / High.
-2. Part 3: the user adds the four signing secrets (`docs/RELEASE-SIGNING.md`); CI build of 1.3.0; hand
-   checks on the phone (TEST-REPORT.md).
+1. The user adds the four signing secrets (`docs/RELEASE-SIGNING.md`) and runs the workflow; the
+   `Petak-apks` artifact of that run is the 1.3.0 release (`SIGNING.txt` shows the release key). To
+   publish a GitHub Release, push tag `v1.3.0` from a machine that may push tags (the cloud session
+   cannot).
+2. Hand checks on the phone (TEST-REPORT.md, "checks by hand"), above all 120 Hz pinching with the
+   performance overlay.
+3. Possible next work: conditional formats, comments and pictures from `.ods` / `.xls` files.
 
 ## How to work in this repo
 

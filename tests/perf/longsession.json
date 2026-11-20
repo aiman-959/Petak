@@ -1,0 +1,56 @@
+{
+ "rounds": 4,
+ "minutes": 0.3,
+ "base": {
+  "round": 1,
+  "heapMb": 23.8,
+  "nodes": 910,
+  "listeners": 525,
+  "canvases": 2,
+  "tileCapMb": 56,
+  "tilesMb": 38.6,
+  "tiles": 71,
+  "file": "roster.xlsx"
+ },
+ "last": {
+  "round": 4,
+  "heapMb": 25.2,
+  "nodes": 919,
+  "listeners": 525,
+  "canvases": 2,
+  "tileCapMb": 56,
+  "tilesMb": 45,
+  "tiles": 78,
+  "file": "roster.xlsx"
+ },
+ "samples": [
+  {
+   "round": 1,
+   "heapMb": 23.8,
+   "nodes": 910,
+   "listeners": 525,
+   "canvases": 2,
+   "tileCapMb": 56,
+   "tilesMb": 38.6,
+   "tiles": 71,
+   "file": "roster.xlsx"
+  },
+  {
+   "round": 4,
+   "heapMb": 25.2,
+   "nodes": 919,
+   "listeners": 525,
+   "canvases": 2,
+   "tileCapMb": 56,
+   "tilesMb": 45,
+   "tiles": 78,
+   "file": "roster.xlsx"
+  }
+ ],
+ "errors": [],
+ "end": {
+  "k3": 42,
+  "gesturing": false,
+  "surface": "none"
+ }
+}

@@ -2,16 +2,17 @@
  * A long session (Part 2 of the 1.3.0 brief): does Petak's memory grow, or something get stuck, when
  * the app is used for a long time without a restart?
  *
- * ROUNDS rounds (default 40, about 8 minutes) of what a user does all day: every eighth round another
+ * ROUNDS rounds (default 120, about 10 minutes) of what a user does all day: every eighth round another
  * file is opened (roster, QM report, a new workbook); every round a few cells are typed (one by real
  * double tap + keyboard), a row is inserted and deleted again, the sheet is flung up and down, pinched
  * out and back in, and a picture-free undo / redo. Every fourth round, after a full garbage collection:
  * JS heap, DOM nodes, event listeners, canvases, the gesture tile cache, Univer's undo stack.
  *
  * Pass: from round 8 (all files opened once) to the end, heap within +12 MB, nodes and listeners
- * within +15 %, canvases within +4, no uncaught errors, the app still edits, computes and pinches.
+ * within +15 %, canvases (outside the tile cache) within +4, the tile cache under its cap, no uncaught
+ * errors, the app still edits, computes and pinches.
  *
- *   BASE_URL=http://localhost:4173/ node tests/perf/longsession.mjs     (ROUNDS=40)
+ *   BASE_URL=http://localhost:4173/ node tests/perf/longsession.mjs     (ROUNDS=120)
  * Writes tests/perf/longsession.json.
  */
 import { chromium, devices } from 'playwright';
@@ -22,7 +23,7 @@ import { fingers, openFile, settled } from '../e2e/pinchlib.mjs';
 import { touch } from '../e2e/touch.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:4173/';
-const ROUNDS = +(process.env.ROUNDS ?? 40);
+const ROUNDS = +(process.env.ROUNDS ?? 120);
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 const FILES = ['tests/fixtures/files/roster.xlsx', 'tests/fixtures/files/qm-report.xlsx', null].map((f) => f && path.resolve(f));
 
@@ -49,7 +50,9 @@ async function measure(round) {
   await cdp.send('HeapProfiler.collectGarbage');
   const m = Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((x) => [x.name, x.value]));
   const app = await page.evaluate(() => ({
-    canvases: document.querySelectorAll('canvas').length,
+    // canvases outside the gesture surface (its tiles are the tile cache, capped on its own)
+    canvases: [...document.querySelectorAll('canvas')].filter((c) => !c.closest('.gesture-surface')).length,
+    tileCapMb: (window.__petakView?.stats?.tileCap ?? 0) / 1048576,
     tilesMb: +((window.__petakView?.stats?.tileBytes ?? 0) / 1048576).toFixed(1),
     tiles: window.__petakView?.stats?.tiles ?? 0,
     file: window.__doc.snapshot.file?.name,
@@ -85,11 +88,10 @@ for (let round = 1; round <= ROUNDS; round++) {
   }, round);
   // a row in and out again
   await page.evaluate(async () => {
-    const api = window.__doc.api;
     const ws = window.__doc.wb.getActiveSheet();
-    ws.getRange(40, 0).activate();
-    await api.executeCommand('sheet.command.insert-row-before');
-    await api.executeCommand('sheet.command.remove-row');
+    ws.insertRowBefore(40);
+    ws.deleteRow(40);
+    await window.__doc.bridge.idle();
   });
   // undo / redo
   await page.evaluate(async () => {
@@ -137,4 +139,5 @@ assert.ok(last.heapMb <= base.heapMb + 12, `heap grew ${base.heapMb} → ${last.
 assert.ok(last.nodes <= base.nodes * 1.15 + 50, `DOM nodes grew ${base.nodes} → ${last.nodes}`);
 assert.ok(last.listeners <= base.listeners * 1.15 + 20, `listeners grew ${base.listeners} → ${last.listeners}`);
 assert.ok(last.canvases <= base.canvases + 4, `canvases grew ${base.canvases} → ${last.canvases}`);
+assert.ok(Math.max(...samples.map((x) => x.tilesMb)) <= last.tileCapMb * 1.1, 'tile cache above its cap');
 console.log('long session: pass');
