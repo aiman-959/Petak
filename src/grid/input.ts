@@ -5,9 +5,11 @@
  *                  headers and merged cells behave as usual); never opens the keyboard
  *   double tap     edit the cell in the formula bar
  *   long press     context menu
- *   drag           scroll (GPU-composited, with momentum); from a selection handle:
- *                  extend the selection; from a header edge: resize the column / row
- *   two fingers    pinch zoom (GPU-scaled, redrawn sharply at the end)
+ *   drag           scroll (drawn by the gesture renderer, with momentum); from a selection
+ *                  handle: extend the selection; from a header edge: resize the column / row
+ *   two fingers    pinch zoom around the fingers (also pans); lift one finger and keep
+ *                  scrolling with the other, put a second finger down again to zoom again
+ *   double tap     on empty space away from the data: zoom in (or back to 100 %)
  *   while typing a formula: taps insert references instead of moving the selection
  *
  * Mouse and pen-with-hover input is left to Univer.
@@ -16,8 +18,10 @@ import { doc } from '../state/doc';
 import { edit } from '../ui/editSession';
 import { pictures, pictureBox } from '../pictures/pictures';
 import { hitTest, emptyDrawing } from '../draw/geometry';
-import { Compositor, MAX_ZOOM, MIN_ZOOM } from './compositor';
+import { GestureView, type Camera } from './gestureView';
+import { doubleTapZoom } from './camera';
 import { hitGrid, toScreen, toSheet, viewInfo, type ViewInfo } from './view';
+import { settings } from '../ui/settings';
 
 const SLOP = 9; // px a finger may move and still be a tap
 const DOUBLE_MS = 320;
@@ -56,35 +60,39 @@ export interface GridInputHooks {
 
 type Mode =
   | { kind: 'idle' }
-  | { kind: 'pending'; id: number; x: number; y: number; t: number; timer: ReturnType<typeof setTimeout>; hit: GridHit; fed?: boolean }
-  | { kind: 'pan'; id: number; x: number; y: number; ox: number; oy: number; lock: 'x' | 'y' | null; samples: Array<[number, number, number]> }
-  | { kind: 'pinch'; d0: number; cx: number; cy: number }
+  | { kind: 'pending'; id: number; x: number; y: number; t: number; timer: ReturnType<typeof setTimeout>; hit: GridHit; fed?: boolean; stopped?: boolean }
+  /** one finger moves the sheet: the sheet point `anchor` stays under it */
+  | { kind: 'pan'; id: number; anchor: { x: number; y: number }; cam0: Camera; lock: 'x' | 'y' | null; samples: Array<[number, number, number]> }
+  /** two fingers: zoom by their distance, the sheet point under their middle stays there */
+  | { kind: 'pinch'; d0: number; z0: number; anchor: { x: number; y: number } }
   | { kind: 'resize'; id: number; axis: 'col' | 'row'; index: number; start: number; last: number; size: number; pos: number }
   | { kind: 'passthrough'; id: number }
   | { kind: 'dead' };
 
 export class GridInput {
   private host: HTMLElement;
-  private comp: Compositor;
+  private view: GestureView;
   private hooks: GridInputHooks;
   private mode: Mode = { kind: 'idle' };
   private touches = new Map<number, { x: number; y: number }>();
   private synthetic = new WeakSet<Event>();
   /** last tap: release time and place (a double tap = next touch-down within DOUBLE_MS of it) */
   private lastTap: { t: number; x: number; y: number; hit: GridHit } | null = null;
-  private fling = 0;
-  private raf = 0;
-  private pendingScroll: { x: number; y: number; vx: number; vy: number } | null = null;
+  private flinging = false;
   private guide: HTMLDivElement;
   private seq = 0;
   private resizeLong: ReturnType<typeof setTimeout> | undefined;
+  private lastKind: 'pan' | 'pinch' = 'pan';
   /** set while the drawing layer is on top: the grid must not react */
   enabled = true;
 
-  constructor(host: HTMLElement, comp: Compositor, hooks: GridInputHooks = {}) {
+  constructor(host: HTMLElement, view: GestureView, hooks: GridInputHooks = {}) {
     this.host = host;
-    this.comp = comp;
+    this.view = view;
     this.hooks = hooks;
+    // a session starts when the gesture renderer takes over and ends after the hand-off to Univer
+    // (fingers up, fling over, sharp grid shown); zoom from the menu goes the same way
+    view.onActive = (active) => this.hooks.onGesture?.(active, this.lastKind);
     this.guide = document.createElement('div');
     this.guide.className = 'resize-guide';
     (host.parentElement ?? host).appendChild(this.guide);
@@ -112,7 +120,12 @@ export class GridInput {
   // ------------------------------------------------------------------ helpers
   private isGridTarget(e: Event): boolean {
     const t = e.target as HTMLElement | null;
-    return !!t && t.tagName === 'CANVAS' && this.host.contains(t);
+    if (!t || !this.host.contains(t)) return false;
+    if (t.tagName === 'CANVAS') return true;
+    // during a gesture the grid's canvas is hidden under the gesture surface: a finger lands on the
+    // element that holds it (a pop-up over the grid would be the target instead)
+    const hidden = this.view.hiddenCanvas;
+    return !!hidden && t.contains(hidden);
   }
   private swallowTouch = (e: TouchEvent) => {
     if (!this.enabled || !this.isGridTarget(e)) return;
@@ -258,20 +271,19 @@ export class GridInput {
     if (!v) return;
     if (this.mode.kind === 'passthrough') return;
     this.touches.set(e.pointerId, p);
-    const flinging = this.fling !== 0;
+    const flinging = this.flinging;
     this.stopFling();
 
     if (this.touches.size >= 2) {
-      // second finger: pinch (whatever the first finger was doing)
+      // second finger: pinch (whatever the first finger was doing, also after a pan or a pinch)
       e.stopPropagation?.();
       e.preventDefault?.();
       if (this.mode.kind === 'pending') clearTimeout(this.mode.timer);
-      if (this.mode.kind === 'resize') this.guide.style.display = 'none';
-      const [a, b] = [...this.touches.values()];
-      if (this.comp.begin()) {
-        this.hooks.onGesture?.(true, 'pinch');
-        this.mode = { kind: 'pinch', d0: Math.max(10, Math.hypot(a.x - b.x, a.y - b.y)), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
-      } else this.mode = { kind: 'dead' };
+      if (this.mode.kind === 'resize') {
+        clearTimeout(this.resizeLong);
+        this.guide.style.display = 'none';
+      }
+      if (!this.startPinch()) this.mode = { kind: 'dead' };
       return;
     }
 
@@ -290,9 +302,8 @@ export class GridInput {
       }
     }
     if (flinging) {
-      // a touch during a fling just stops it
-      this.endGesture('pan');
-      this.mode = { kind: 'dead' };
+      // a touch during a fling stops it; dragging on carries on scrolling, lifting ends the gesture
+      this.mode = { kind: 'pending', id: e.pointerId, x: p.x, y: p.y, t: performance.now(), timer: undefined as unknown as ReturnType<typeof setTimeout>, hit: { x: p.x, y: p.y, area: 'cell', row: -1, col: -1 }, fed, stopped: true };
       return;
     }
     const edge = fed ? null : this.headerEdge(v, p.x, p.y);
@@ -336,38 +347,32 @@ export class GridInput {
     if (m.kind === 'pending') {
       if (Math.hypot(p.x - m.x, p.y - m.y) < SLOP) return;
       clearTimeout(m.timer);
-      // headers do not start a pan (a drag there is too easily a missed resize)
-      if (!this.comp.begin()) {
+      if (!this.view.begin()) {
         this.mode = { kind: 'dead' };
         return;
       }
-      this.hooks.onGesture?.(true, 'pan');
-      const pos = this.comp.position;
+      if (!m.stopped) this.gestureStarted('pan');
       const dx = Math.abs(p.x - m.x);
       const dy = Math.abs(p.y - m.y);
-      this.mode = { kind: 'pan', id: m.id, x: m.x, y: m.y, ox: pos.x, oy: pos.y, lock: dy > dx * 2.2 ? 'y' : dx > dy * 2.2 ? 'x' : null, samples: [[performance.now(), p.x, p.y]] };
+      const cam0 = this.view.camera;
+      // the sheet point that was under the finger when it went down follows the finger
+      this.mode = { kind: 'pan', id: m.id, anchor: this.view.anchorAt(m.x, m.y), cam0, lock: dy > dx * 2.2 ? 'y' : dx > dy * 2.2 ? 'x' : null, samples: [[performance.now(), p.x, p.y]] };
+      this.panTo(this.mode, p);
       return;
     }
     if (m.kind === 'pan') {
-      const z = this.comp.view!.zoom;
-      const now = performance.now();
-      m.samples.push([now, p.x, p.y]);
+      m.samples.push([performance.now(), p.x, p.y]);
       if (m.samples.length > 8) m.samples.shift();
-      const dx = m.lock === 'y' ? 0 : (m.x - p.x) / z;
-      const dy = m.lock === 'x' ? 0 : (m.y - p.y) / z;
-      this.requestScroll(m.ox + dx, m.oy + dy, 0, 0);
+      this.panTo(m, p);
       return;
     }
     if (m.kind === 'pinch') {
       const pts = [...this.touches.values()];
       if (pts.length < 2) return;
       const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-      const z0 = this.comp.view!.zoom;
-      const k = Math.max(MIN_ZOOM / z0, Math.min(MAX_ZOOM / z0, d / m.d0));
       const cx = (pts[0].x + pts[1].x) / 2;
       const cy = (pts[0].y + pts[1].y) / 2;
-      cancelAnimationFrame(this.raf);
-      this.raf = requestAnimationFrame(() => this.comp.setPinch(k, m.cx, m.cy, cx - m.cx, cy - m.cy));
+      this.view.setCamera(this.view.cameraFor(m.anchor, cx, cy, (m.z0 * d) / m.d0));
       return;
     }
     if (m.kind === 'resize') {
@@ -408,8 +413,14 @@ export class GridInput {
     if (m.kind === 'pending') {
       clearTimeout(m.timer);
       this.mode = { kind: 'idle' };
+      if (m.stopped) {
+        // the touch only stopped a fling
+        this.endGesture();
+        return;
+      }
       this.tap(m.x, m.y, m.hit, m.t, !!m.fed);
     } else if (m.kind === 'pan') {
+      if (e.pointerId !== m.id) return;
       this.mode = { kind: 'idle' };
       // velocity over the last ~100 ms, in screen px / ms
       const now = performance.now();
@@ -424,13 +435,16 @@ export class GridInput {
         vy = m.lock === 'x' ? 0 : -(b[2] - a[2]) / dt;
       }
       if (Math.hypot(vx, vy) > 0.35) this.startFling(vx, vy);
-      else this.endGesture('pan');
+      else this.endGesture();
     } else if (m.kind === 'pinch') {
       if (this.touches.size === 0) {
         this.mode = { kind: 'idle' };
-        cancelAnimationFrame(this.raf);
-        this.endGesture('pinch');
-      } // one finger still down: wait for it (no pan after a pinch: avoids jumps)
+        this.endGesture();
+      } else if (this.touches.size === 1) {
+        // one finger left on the glass: it scrolls from here, without a jump
+        const [[id, q]] = [...this.touches.entries()];
+        this.mode = { kind: 'pan', id, anchor: this.view.anchorAt(q.x, q.y), cam0: this.view.camera, lock: null, samples: [[performance.now(), q.x, q.y]] };
+      }
     } else if (m.kind === 'resize') {
       clearTimeout(this.resizeLong);
       this.guide.style.display = 'none';
@@ -460,10 +474,7 @@ export class GridInput {
     this.touches.delete(e.pointerId);
     if (m.kind === 'pending') clearTimeout(m.timer);
     if (m.kind === 'resize') this.guide.style.display = 'none';
-    if (m.kind === 'pan' || m.kind === 'pinch') {
-      cancelAnimationFrame(this.raf);
-      this.endGesture(m.kind);
-    }
+    if ((m.kind === 'pan' || m.kind === 'pinch' || (m.kind === 'pending' && m.stopped)) && this.touches.size === 0) this.endGesture();
     if (this.touches.size === 0) this.mode = { kind: 'idle' };
   }
 
@@ -499,6 +510,13 @@ export class GridInput {
     } else if (edit.get().editing) await edit.commit(null);
     else edit.release(); // a tap on the grid closes the keyboard unless a formula is being typed
     if (double && hit.area === 'cell') {
+      // double tap on empty space away from the data zooms (like a map); on or next to data it edits
+      if (settings.get().doubleTapZoom && this.emptyArea(hit)) {
+        const z = this.view.zoom;
+        this.lastKind = 'pinch';
+        this.view.zoomTo(doubleTapZoom(z), x, y);
+        return;
+      }
       edit.start();
       return;
     }
@@ -547,60 +565,81 @@ export class GridInput {
     this.hooks.onContext?.(hit);
   }
 
-  private requestScroll(x: number, y: number, vx: number, vy: number) {
-    this.pendingScroll = { x, y, vx, vy };
-    if (this.raf) return;
-    this.raf = requestAnimationFrame(() => {
-      this.raf = 0;
-      const s = this.pendingScroll;
-      this.pendingScroll = null;
-      if (s) this.comp.scroll(s.x, s.y, s.vx, s.vy);
-    });
+  private gestureStarted(kind: 'pan' | 'pinch') {
+    this.lastKind = kind;
+  }
+
+  /** Second finger down: zoom from the current picture (a pan or an earlier pinch may be running). */
+  private startPinch(): boolean {
+    const [a, b] = [...this.touches.values()];
+    if (!this.view.begin()) return false;
+    this.gestureStarted('pinch');
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    this.mode = { kind: 'pinch', d0: Math.max(10, Math.hypot(a.x - b.x, a.y - b.y)), z0: this.view.camera.z, anchor: this.view.anchorAt(mx, my) };
+    return true;
+  }
+
+  private panTo(m: Extract<Mode, { kind: 'pan' }>, p: { x: number; y: number }) {
+    const c = this.view.cameraFor(m.anchor, p.x, p.y, m.cam0.z);
+    if (m.lock === 'y') c.x = m.cam0.x;
+    if (m.lock === 'x') c.y = m.cam0.y;
+    this.view.setCamera(c);
+  }
+
+  /** Is the cell empty and away from the data (more than two rows / columns past the used range)? */
+  private emptyArea(hit: GridHit): boolean {
+    try {
+      const ws = doc.wb.getActiveSheet();
+      const v = ws.getRange(hit.row, hit.col).getValue();
+      if (v !== null && v !== undefined && v !== '') return false;
+      const lastRow = Math.max(0, ws.getLastRow());
+      const lastCol = Math.max(0, ws.getLastColumn());
+      return hit.row > lastRow + 2 || hit.col > lastCol + 2;
+    } catch {
+      return false;
+    }
   }
 
   private startFling(vx: number, vy: number) {
-    const z = this.comp.view!.zoom;
+    const z = this.view.camera.z;
     // sheet px / ms
     let sx = vx / z;
     let sy = vy / z;
     let last = performance.now();
-    const step = (t: number) => {
-      const dt = Math.min(48, t - last);
+    this.flinging = true;
+    this.view.animate((t: number) => {
+      if (!this.flinging) return false;
+      const dt = Math.min(48, Math.max(0, t - last));
       last = t;
       const decay = Math.exp(-dt / FRICTION_MS);
-      const pos = this.comp.position;
+      const c = this.view.camera;
       // distance travelled during dt under exponential decay
-      const k = (FRICTION_MS * (1 - decay)) / (dt || 1);
-      const nx = pos.x + sx * dt * k;
-      const ny = pos.y + sy * dt * k;
-      this.comp.scroll(nx, ny, sx, sy);
+      const kk = (FRICTION_MS * (1 - decay)) / (dt || 1);
+      this.view.setCamera({ z: c.z, x: c.x + sx * dt * kk, y: c.y + sy * dt * kk });
       sx *= decay;
       sy *= decay;
-      if (this.comp.atLimit('x')) sx = 0;
-      if (this.comp.atLimit('y')) sy = 0;
+      if (this.view.atLimit('x')) sx = 0;
+      if (this.view.atLimit('y')) sy = 0;
       if (Math.hypot(sx, sy) * z < 0.02) {
-        this.fling = 0;
-        this.endGesture('pan');
-        return;
+        this.flinging = false;
+        if (this.touches.size === 0) this.endGesture();
+        return false;
       }
-      this.fling = requestAnimationFrame(step);
-    };
-    this.fling = requestAnimationFrame(step);
+      return true;
+    });
   }
   private stopFling() {
-    if (this.fling) cancelAnimationFrame(this.fling);
-    this.fling = 0;
+    if (!this.flinging) return;
+    this.flinging = false;
+    this.view.stopAnimations();
   }
-  private endGesture(kind: 'pan' | 'pinch') {
-    cancelAnimationFrame(this.raf);
-    this.raf = 0;
-    if (this.pendingScroll) {
-      this.comp.scroll(this.pendingScroll.x, this.pendingScroll.y);
-      this.pendingScroll = null;
-    }
-    const stats = this.comp.end();
-    (globalThis as unknown as { __lastGesture: unknown }).__lastGesture = { kind, ...stats };
-    this.hooks.onGesture?.(false, kind);
+  /** All fingers are up: hand the picture back to the grid (unless a fling is still running). */
+  private endGesture() {
+    if (this.flinging) return;
+    const st = this.view.stats;
+    (globalThis as unknown as { __lastGesture: unknown }).__lastGesture = { kind: this.lastKind, frames: st.frames, renders: st.renders, frameMsMax: st.frameMsMax, tilesRendered: st.tilesRendered };
+    this.view.end();
   }
 
   private showGuide(axis: 'col' | 'row', pos: number) {

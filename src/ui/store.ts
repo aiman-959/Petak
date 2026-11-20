@@ -23,7 +23,9 @@ export type DialogId =
   | 'names'
   | 'fonts'
   | 'pagesetup'
-  | 'recent';
+  | 'recent'
+  | 'zoom'
+  | 'settings';
 export type ToolTab = 'edit' | 'format' | 'insert' | 'draw' | 'data' | 'tools';
 
 interface UiState {
@@ -169,3 +171,5 @@ export async function guard(fn: () => Promise<unknown> | unknown, okText?: strin
     ui.endProgress();
   }
 }
+
+(globalThis as unknown as { __ui: typeof ui }).__ui = ui; // e2e tests open dialogs and switch the theme through this

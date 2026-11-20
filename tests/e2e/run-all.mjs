@@ -7,7 +7,7 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 
-const SUITES = ['cells', 'cells2', 'draw-touch', 'part2', 'part3', 'part4', 'fonts', 'files', 'render', 'features', 'phase3', 'commands', 'roundtrip', 'taps'];
+const SUITES = ['cells', 'cells2', 'draw-touch', 'part2', 'part3', 'part4', 'fonts', 'files', 'render', 'features', 'phase3', 'commands', 'roundtrip', 'taps', 'pinch', 'daily', 'a11y'];
 const only = process.argv.slice(2);
 const summary = [];
 for (const s of SUITES.filter((x) => !only.length || only.includes(x))) {

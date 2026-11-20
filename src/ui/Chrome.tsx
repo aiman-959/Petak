@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { onBack } from './back';
 import {
-  Undo2, Redo2, PenTool, FolderOpen, History, ChevronLeft, ChevronRight, Printer, Save, MoreVertical, Moon, Sun, Plus, Pencil, LayoutGrid, Paintbrush, PlusSquare, Database, Wrench, X, FilePlus, Share2, Download, Copy, Trash2,
+  Undo2, Redo2, PenTool, FolderOpen, History, ChevronLeft, ChevronRight, Printer, Save, MoreVertical, Moon, Sun, Plus, Pencil, LayoutGrid, Paintbrush, PlusSquare, Database, Wrench, X, FilePlus, Share2, Download, Copy, Trash2, ZoomIn, Settings,
 } from 'lucide-react';
 import { useDoc } from './hooks';
 import { fileActions, sheets as sheetActions } from './actions';
@@ -53,7 +53,9 @@ export function TopBar({ onToggleTheme, dark }: { onToggleTheme: () => void; dar
             <Tool icon={<Download />} label="Export .csv" onClick={() => fileActions.saveAs('csv')} />
             <Tool icon={<Printer />} label="Print / PDF" testId="menu-print" onClick={() => ui.open('pagesetup')} />
             <Tool icon={<Share2 />} label="Share" onClick={fileActions.share} />
+            <Tool icon={<ZoomIn />} label="Zoom" testId="menu-zoom" onClick={() => ui.open('zoom')} />
             <Tool icon={dark ? <Sun /> : <Moon />} label={dark ? 'Light mode' : 'Dark mode'} onClick={onToggleTheme} />
+            <Tool icon={<Settings />} label="Settings" testId="menu-settings" onClick={() => ui.open('settings')} />
             <Tool icon={<LayoutGrid />} label="About" onClick={() => ui.open('about')} />
           </div>
           {s.file.vba && <p className="muted">This workbook contains VBA macros. They are kept when you save as .xlsm but cannot run on Android.</p>}

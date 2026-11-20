@@ -11,6 +11,8 @@ import { isTouchDevice } from './univer/setup';
 import { FormulaBar } from './ui/FormulaBar';
 import { TopBar, SheetTabs, BottomBar, SidePanel, Overlays, PromptDialog } from './ui/Chrome';
 import { NumFmtDialog, CfDialog, FindDialog, FunctionsDialog, AboutDialog, RecentDialog } from './ui/Dialogs';
+import { SettingsDialog, ZoomPanel } from './ui/ZoomControls';
+import { useSettings } from './ui/settings';
 import { onLaunchFile } from './io/files';
 import { useKeyboardOpen, useMedia } from './ui/hooks';
 import { ui, useUi } from './ui/store';
@@ -78,7 +80,17 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     prefs.set('theme', theme);
     if (ready) doc.api.toggleDarkMode(theme === 'dark');
+    doc.view?.reset();
   }, [theme, ready]);
+
+  // the zoom pill opens the zoom panel; Settings → Developer shows the performance overlay
+  const perfOverlay = useSettings().perfOverlay;
+  useEffect(() => {
+    if (!ready || !doc.view) return;
+    doc.view.onPillTap = () => ui.open('zoom');
+    doc.view.setOverlay(perfOverlay);
+    doc.view.showPill();
+  }, [ready, perfOverlay]);
 
   // Save the session when the app goes to background (Android may kill it).
   useEffect(() => {
@@ -141,6 +153,7 @@ export default function App() {
           {ready && !drawing && <SelectionBar />}
           {ready && !drawing && touchUi && <FillHandle />}
           {ready && !drawing && <RefHighlights />}
+          {ready && dialog === 'zoom' && <ZoomPanel />}
         </div>
         {tablet && ready && <SidePanel />}
       </div>
@@ -169,6 +182,7 @@ export default function App() {
           {dialog === 'recent' && <RecentDialog />}
           {dialog === 'pagesetup' && <PrintDialog />}
           {dialog === 'picture' && <PictureViewer />}
+          {dialog === 'settings' && <SettingsDialog />}
         </Suspense>
       )}
       {ready && <ContextMenu />}

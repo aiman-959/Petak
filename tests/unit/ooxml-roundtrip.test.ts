@@ -6,8 +6,16 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { writeOoxml } from '../../src/io/ooxml/write';
+import { writeOoxml as writeRaw } from '../../src/io/ooxml/write';
+import { excelProblems } from './excel-rules';
 import { diffPackages, load, ab } from './ooxml-helpers';
+
+/** Every package written here must also pass Excel's own rules (no "damaged file" on opening). */
+const writeOoxml = (...args: Parameters<typeof writeRaw>) => {
+  const out = writeRaw(...args);
+  expect(excelProblems(out.buf)).toEqual([]);
+  return out;
+};
 
 const dir = path.resolve('tests/fixtures/files');
 const F = (f: string) => path.join(dir, f);

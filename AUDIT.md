@@ -91,6 +91,10 @@ Device: Low/Mid/High tiers, load governor, on-demand modules.
 | F-06 | Medium | Saving a workbook that came from .xls / .ods / CSV as .xlsx changed its default font to Calibri 11 and its column widths to 64 px | Fixed (`roundtrip.mjs`, `ooxml-roundtrip.test.ts`) |
 | F-08 | High | Saving a workbook that did not come from an .xlsx (new, .xls, .ods, CSV) wrote a broken `styles.xml` when it had a number format Excel does not have built in (Currency, Euro, any Date from the Format menu) together with a font, fill or border: Excel reports such a file as damaged, Petak lost the number formats on reopening | Fixed in 1.2.1 (`ooxml-roundtrip.test.ts`; `roundtrip.mjs` now checks every saved package is well-formed XML) |
 | F-07 | Low | Univer's command stack grew by about 1.4 entries per tap for the whole session (54 after 40 taps) and kept disposed sheet scenes reachable | Fixed (`commands.mjs`): stays empty; 20 files in a row: no growth in live canvases, heap or renderer memory (`tests/perf/PHASE5.md`) |
+| P-01 | Critical | Pinch zoom: a second, scaled copy of the grid with its own headers over the real one; empty cells and uncovered areas solid black (up to 93 % of the screen); on zoom-in the copy grew over the app bar, formula bar and tabs; zoom-out showed nothing new and stopped at 40 % | Fixed in 1.3.0: new gesture renderer (`src/grid/gestureView.ts`, `tiles.ts`): one camera, tiles at map-style zoom levels, 10–400 %. `tests/e2e/pinch.mjs` 48 / 48 (1.2.1: 3 / 47), emulator `tests/device/e2e-pinch.mjs` |
+| P-02 | High | Frozen columns wider than the screen (the roster from 200 % in portrait) made Univer's scrolling pane zero-width; Univer then ignored every scroll, also vertical: the sheet could not be scrolled at all, and a pinch there jumped back after the fingers lifted | Fixed (`view.ts` scrolls the panes itself in that case): `pinch.mjs` roster 200 % / 400 % |
+| P-04 | High | With nothing happening on screen the app still drew 60 frames a second (120 on a 120 Hz screen): Univer's render loops (the grid's and its cell editor's) never stop, every frame made the browser commit and copy the grid's canvas: CPU time, heat and battery for as long as Petak is open | Fixed: `quietRenderLoop` (`view.ts`) pauses each loop when nothing is dirty and wakes it on the first change. `pinch.mjs` "idle": 0 frames a second (1.2.1: 120), a change still drawn within 150 ms |
+| P-03 | Medium | A zoom asked for in the moment after a workbook appears (Univer registers its zoom controller a little later) threw an uncaught error and the zoom was lost | Fixed: zoom requests that Univer refuses are retried by the hand-off (`pinch.mjs`: refused five times, still zooms; 1.2.1 fails the same check) |
 
 Device-only observations (emulator) are in the section "On a real Android WebView" at the end.
 
@@ -471,6 +475,102 @@ edits started at the same offset and the insertion was applied first, so the fon
 part of it (`</fonts>mt numFmtId="166"…`). **Fix:** at the same offset the replaced collection goes
 first (`src/io/ooxml/styles.ts`). `roundtrip.mjs` now checks that every part of every saved package
 is well-formed XML.
+
+## Release 1.3.0, Part 1: pinch zoom
+
+Reported on a Snapdragon 8s Gen 3 phone: while pinching, a second scaled copy of the grid on top of
+the real one (row numbers and column letters twice, misaligned), areas not drawn yet solid black,
+pinching out showed black instead of zooming out, and it felt sluggish. On the roster and on an empty
+sheet scrolled to FN1300.
+
+### P-01 Pinch zoom showed two grids and black areas
+- **Steps:** any file; pinch with two fingers and keep them on the glass. `tests/e2e/pinch.mjs`
+  takes screenshots while the fingers rest and compares them with the grid after they lift, region by
+  region (headers, frozen panes, scrolling pane); `tests/device/e2e-pinch.mjs` does the same on the
+  emulator's real WebView with `adb screencap`.
+- **Measured on 1.2.1:** 33 of 38 pinches with solid-black 12 × 12-pixel blocks (up to 92.8 % of the
+  grid, the empty sheet at FN1300 zooming in); all 38 differed from the settled grid by 100–250 (mean
+  absolute difference, 0–255; a correct picture measures under 16); 10 could not reach the zoom asked
+  for (minimum 40 %). 3 of 47 checks passed.
+- **Root cause, three faults in the 1.1–1.2 "compositor" (`src/grid/compositor.ts`, removed):**
+  1. *Black.* It copied Univer's canvas into new canvases made with `getContext('2d', { alpha: false })`.
+     Such a canvas starts opaque black, and Univer leaves cells without a fill transparent, so every
+     empty cell came out black in the copy (an empty sheet: all of it). Not a canvas-size problem: the
+     largest canvas was 1081 × 1640 (1.8 Mpx), far inside WebView limits; but memory was unbounded
+     during long flings (header strips were never evicted).
+  2. *Two grids.* The whole copy — header strips and frozen panes included — was scaled as one picture
+     with a CSS transform around the fingers. Zooming out, it shrank and the live grid (scrolled
+     elsewhere by the copy's own block renders) showed around it, with its own headers; zooming in,
+     it grew past the grid area over the app bar, formula bar and tabs. Headers did not stay at the
+     edges.
+  3. *Nothing to show when zooming out.* The copy only had what was on screen when the pinch started;
+     uncovered areas had no content until the fingers lifted, and the zoom stopped at 40 %.
+- **Fix (1.3.0): a new gesture renderer** (`src/grid/gestureView.ts`, `tiles.ts`, `camera.ts`), like
+  a map app. Tiles of the sheet are drawn by Univer's own renderer (its print path, `Spreadsheet.render`,
+  so fills, borders, fonts, merges, overflow, pictures, shapes and sparklines are exact) at fixed zoom
+  levels 12.5 / 25 / 50 / 100 / 200 / 400 % plus the zoom the sheet rests at. During a gesture one
+  surface covers the grid area; every pane (scrolling cells, frozen rows / columns / corner, both parts
+  of both headers) is a clipping box holding one layer per level, and one camera places them all, so
+  only one grid is ever visible and everything scales around the fingers together. Missing tiles show
+  the nearest cached level, the grid's picture from the gesture's start, or plain grid lines, and are
+  drawn with the time left in each frame. Tiles are 512 px (1 MB) canvases, cached up to 96 / 56 / 28 MB
+  (High / Mid / Low tier) with the farthest evicted first; panes have the sheet colour, nothing can be
+  black. After the fingers lift Univer is set to the final zoom and position, renders sharply, and only
+  then is the surface removed.
+- **Why DOM layers, not one canvas or WebGL:** measured here (`tests/perf/PINCH.md`), a canvas redrawn
+  every frame (the first version of this fix) cost 4–5 ms of software raster per frame on this GPU-less
+  server and fell to 31–36 fps uncapped on the throttled tiers; WebGL was worse here (11 fps: software GL
+  with a readback). Layers moved by CSS transforms are composited off the main thread: Petak's work per
+  frame is 0.23 ms. On a phone all three would use the GPU; layers use the least main-thread time there too.
+- **Also new:** zoom from 10 % to 400 % (Excel's range); pinch → one-finger scroll → pinch again
+  without a jump; double tap on empty space away from the data zooms to 200 % and back (on or next to
+  data it still edits, as in Excel; Settings can turn it off); zoom pill with the percentage (tap it for
+  the zoom panel: presets 50 / 75 / 100 / 150 / 200 % and a 10–400 % slider, also in File → Zoom);
+  Settings → Developer → Performance overlay (fps, frame time, tiles pending, tile cache, zoom level).
+- **Proof:** `tests/e2e/pinch.mjs` 48 / 48: at 10, 25, 50, 100, 200, 400 % on an empty sheet at
+  FN1300, the roster and a 50,000-row file, pinch in and out: no black blocks beyond what the settled
+  grid has, every region within 16 of the settled grid (below 20 % zoom: 45 for headers, where Univer
+  leaves out row numbers shorter than 4 px and the 25 % tile still has them), the zoom asked for reached;
+  fast, slow and ten repeated pinches; pinch → scroll → pinch; double tap; presets and slider; a pinch the
+  moment the app is ready and right after opening a file. `tests/unit/camera.test.ts` (13): the point
+  under the fingers stays put at every zoom with and without frozen panes, limits, levels.
+
+### P-02 Frozen columns wider than the screen stopped all scrolling
+- **Steps:** roster (columns A:B and rows 1–3 frozen), zoom to 200 % in portrait. Found by `pinch.mjs`
+  (the picture jumped back to row 4 after every pinch at 200 % and 400 %).
+- **Cause:** row headers + frozen columns are 214 px at 100 %, 428 px at 200 %: wider than the 412 px
+  screen. Univer's scrolling pane then has a negative width, Univer marks it inactive, and
+  `scrollToViewportPos` returns at once for inactive panes — for both directions. The sheet could not
+  be scrolled at all at that zoom (in 1.2.1 too).
+- **Fix:** `scrollTo` (`src/grid/view.ts`) sets the panes' scroll itself when the scrolling pane is
+  inactive, the way Univer does after a layout change, and stores it as Univer's scroll state (so a
+  later re-layout does not reset it). Rows scroll under the frozen header rows as in Excel.
+
+### P-03 A zoom right after a workbook appears was lost
+- **Steps:** a zoom (pinch, preset, double tap) in the first moments after a workbook appears.
+  Found as an intermittent uncaught `[redi]: Cannot find "SheetsZoomRenderController"` in the e2e run;
+  reproduced on purpose by refusing the first zoom requests.
+- **Cause:** Univer's mobile UI registers its zoom controller a little after the workbook's renderer;
+  `set-zoom-ratio` before that throws, the rejection was not handled and the zoom never happened.
+- **Fix:** `setUniverZoom` (`view.ts`) reports a refusal instead of throwing; the hand-off asks again
+  every few frames until Univer is at the zoom. `pinch.mjs`: refused five times, still ends at 200 %,
+  no uncaught error (1.2.1: fails, uncaught error).
+
+### P-04 The idle app drew 60–120 frames a second
+- **Steps:** open any file, put the phone down. `pinch.mjs` step "idle" counts the animation frames
+  the page asks for in one second; a Chrome trace counts frame commits and canvas copies
+  (`Canvas2DResourceProvider::ProduceCanvasResource`).
+- **Measured on 1.2.1:** 120 frame requests a second (two loops), 60 commits a second, each copying
+  the whole grid canvas (about 2 million pixels on a Pixel 7 screen): about 90 ms of main-thread time every second on this server
+  with nothing changing. On a 120 Hz phone the loops run at 120 Hz.
+- **Cause:** Univer's engine runs a `requestAnimationFrame` loop for as long as a unit is shown and
+  only skips the drawing when nothing is dirty; the frame request itself keeps the browser producing
+  frames. Its hidden cell editor has a second engine with a second loop.
+- **Fix:** `quietRenderLoop` (`src/grid/view.ts`, applied to every render unit, also ones made later)
+  stops an engine's loop after a dozen frames with nothing dirty, and starts it again from Univer's
+  own `makeDirty` (every change Univer wants drawn goes through it), with a 4-per-second check as a
+  safety net. Proof: `pinch.mjs` "idle" (0 frames a second, 1.2.1: 120; a value set without a touch
+  is on screen within 150 ms), and every e2e suite (editing, scrolling, drawing, pictures, charts).
 
 ## On a real Android WebView (emulator, API 34)
 

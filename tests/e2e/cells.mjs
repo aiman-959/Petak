@@ -130,8 +130,8 @@ await step('drag scrolls with cached bitmaps (few renders), selection unchanged'
   assert.ok(s.y > 300, 'scrolled down: ' + JSON.stringify(s));
   assert.deepEqual(await sel(), before);
   const gs = await ev(() => window.__lastGesture);
-  assert.ok(gs.frames >= 10 && gs.renders <= 3, 'compositor did the work: ' + JSON.stringify(gs));
-  assert.equal(await ev(() => getComputedStyle(document.querySelector('.grid-compositor')).display), 'none');
+  assert.ok(gs.frames >= 10 && gs.renders === 0, 'the gesture renderer did the work, Univer did not draw: ' + JSON.stringify(gs));
+  assert.equal(await ev(() => getComputedStyle(document.querySelector('.gesture-surface')).display), 'none');
 });
 
 await step('fling keeps moving after the finger lifts, then settles sharply', async () => {
@@ -142,10 +142,10 @@ await step('fling keeps moving after the finger lifts, then settles sharply', as
   await gestureEnd();
   const y2 = (await ev(() => window.__view.mainOrigin(window.__view.viewInfo()))).y;
   assert.ok(y2 > y0 + 200 + 80, `momentum carried the sheet further than the finger did: ${y0} -> ${y2}`);
-  assert.equal(await ev(() => getComputedStyle(document.querySelector('.grid-compositor')).display), 'none');
+  assert.equal(await ev(() => getComputedStyle(document.querySelector('.gesture-surface')).display), 'none');
 });
 
-await step('pinch zooms around the fingers and redraws once at the end', async () => {
+await step('pinch zooms around the fingers; Univer draws only at the end', async () => {
   await ev(() => { const V = window.__view; V.scrollTo(V.viewInfo(), 0, 200); });
   await page.waitForTimeout(200);
   const g = await (await page.$('[data-testid=grid]')).boundingBox();
@@ -159,7 +159,7 @@ await step('pinch zooms around the fingers and redraws once at the end', async (
   assert.ok(Math.abs(z1 / z0 - 1.8) < 0.05, `zoom ${z0} -> ${z1}`);
   const after = await ev(([x, y]) => { const V = window.__view; const h = document.querySelector('[data-testid=grid]').getBoundingClientRect(); const s = V.toSheet(V.viewInfo(), x - h.left, y - h.top); return [s.x, s.y]; }, [focal.x, focal.y]);
   assert.ok(Math.abs(after[0] - under[0]) < 6 && Math.abs(after[1] - under[1]) < 6, `focal point stays put: ${under} -> ${after}`);
-  assert.ok((await ev(() => window.__lastGesture)).renders <= 1);
+  assert.equal((await ev(() => window.__lastGesture)).renders, 0);
   await T.pinch(focal, 216, 120, { steps: 12 });
   await page.waitForTimeout(300);
 });

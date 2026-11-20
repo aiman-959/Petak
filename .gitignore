@@ -23,3 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 tests/scratch/
+
+# release key in text form (docs/RELEASE-SIGNING.md)
+*.b64
+
+# throwaway probes
+tests/*.tmp.mjs

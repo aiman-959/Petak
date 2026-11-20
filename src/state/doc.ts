@@ -21,13 +21,13 @@ import { fingerprints, type Fingerprints } from '../io/ooxml/fingerprint';
 import { notesResource, RES_DV } from '../io/review';
 import { pictures, setCellPictures, clearCellPictures } from '../pictures/pictures';
 import { kv } from './storage';
-import { Compositor } from '../grid/compositor';
+import { GestureView } from '../grid/gestureView';
 import { invalidateDocumentFontMetrics } from '@univerjs/engine-render';
 import { ensureFonts, fontReport, reportText } from '../fonts/fonts';
 import { GridInput, type GridInputHooks } from '../grid/input';
 import { cfFromUniver, cfToUniver, type UCfRule } from '../univer/cf';
 import { canvasStretch, getTier } from '../device/tier';
-import { fixThinLines } from '../grid/view';
+import { fixThinLines, quietRenderLoop } from '../grid/view';
 import { governor } from '../device/governor';
 import { AutosaveTracker, loadSession } from './autosave';
 import { MIME, saveFile, type OpenedFile } from '../io/files';
@@ -146,8 +146,9 @@ class Doc {
     return this.ioRpc;
   }
 
-  /** touch input and GPU-composited scrolling (touch devices) */
+  /** touch input and the gesture renderer (touch devices) */
   input: GridInput | null = null;
+  view: GestureView | null = null;
   /** true while a finger pans / flings / pinches: UI state updates wait until it ends */
   gesturing = false;
   inputHooks: GridInputHooks = {};
@@ -179,16 +180,18 @@ class Doc {
           }
         }
       });
-      const tier = getTier();
-      const comp = new Compositor(container, tier.tier === 'high' ? 8 : tier.tier === 'mid' ? 6 : 4);
-      this.input = new GridInput(container, comp, {
+      this.view = new GestureView(container);
+      this.input = new GridInput(container, this.view, {
         onContext: (h) => this.inputHooks.onContext?.(h),
         onShapeTap: (id) => this.inputHooks.onShapeTap?.(id),
         onPictureDoubleTap: (id) => this.inputHooks.onPictureDoubleTap?.(id),
         onGesture: (active, kind) => {
           this.gesturing = active;
           this.inputHooks.onGesture?.(active, kind);
-          if (!active) this.listeners.forEach((l) => l());
+          if (!active) {
+            this.listeners.forEach((l) => l());
+            this.scheduleGrow();
+          }
         },
       });
     }
@@ -204,6 +207,7 @@ class Doc {
     setImageListener(() => this.syncMetaRenderers());
     let pv = pictures.contentVersion;
     pictures.onRepaint(() => {
+      this.view?.invalidate();
       try {
         this.wb.getActiveSheet().refreshCanvas();
       } catch {
@@ -238,6 +242,9 @@ class Doc {
       },
     } as never);
     cmd.onCommandExecuted((info, options) => {
+      // the gesture renderer's tiles show the sheet as it was: any change to the workbook redraws them
+      // (growing the sheet at its end is not a change: tiles know where the sheet ended)
+      if (info.type === 2 && !/^doc\./.test(info.id) && !(options as { autoGrow?: boolean } | undefined)?.autoGrow) this.view?.invalidate();
       if (this.loading || this.gesturing) return;
       const opt = options as { fromFormulaEngine?: boolean; onlyLocal?: boolean; autoGrow?: boolean } | undefined;
       if (opt?.autoGrow) return;
@@ -282,7 +289,7 @@ class Doc {
    * Sheets start small (fast to lay out on phones) and grow as you scroll or move
    * towards the edge, up to the maximum. Growing is not an edit: no undo step, not "dirty".
    */
-  private scheduleGrow() {
+  scheduleGrow() {
     cancelAnimationFrame(this.growRaf);
     this.growRaf = requestAnimationFrame(() => {
       const wb = this.h.api.getActiveWorkbook();
@@ -292,19 +299,24 @@ class Doc {
       const sel = ws.getActiveRange()?.getRange();
       const lastRow = Math.max(vis?.endRow ?? 0, sel?.endRow ?? 0);
       const lastCol = Math.max(vis?.endColumn ?? 0, sel?.endColumn ?? 0);
-      this.ensureSize(ws.getSheetId(), lastRow + 1, lastCol + 1, true);
+      // room for a pinch out to the smallest zoom from here (the view then covers up to 10× more)
+      const z = (ws as unknown as { getZoom?: () => number }).getZoom?.() ?? 1;
+      const f = Math.max(1, z / 0.1);
+      const extraR = vis ? Math.ceil((vis.endRow - vis.startRow + 1) * f) : 200;
+      const extraC = vis ? Math.ceil((vis.endColumn - vis.startColumn + 1) * f) : 10;
+      this.ensureSize(ws.getSheetId(), lastRow + 1, lastCol + 1, true, extraR, extraC);
     });
   }
 
   /** Make sure the sheet has at least `rows` x `cols` (+ headroom when `headroom`). */
-  ensureSize(sheetId: string, rows: number, cols: number, headroom = false) {
+  ensureSize(sheetId: string, rows: number, cols: number, headroom = false, extraRows = 200, extraCols = 10) {
     const ws = this.wb.getSheetBySheetId(sheetId);
     if (!ws) return;
     const unitId = this.wb.getId();
     const maxR = ws.getMaxRows();
     const maxC = ws.getMaxColumns();
-    const needR = headroom ? rows + 200 : rows; // grow early so scrolling never hits a wall
-    const needC = headroom ? cols + 10 : cols;
+    const needR = headroom ? rows + Math.max(200, extraRows) : rows; // grow early so scrolling never hits a wall
+    const needC = headroom ? cols + Math.max(10, extraCols) : cols;
     if (needR > maxR && maxR < Doc.MAX_ROWS) {
       const rowCount = Math.min(Doc.MAX_ROWS, Math.max(needR, maxR + 1000));
       this.h.api.syncExecuteCommand('sheet.mutation.set-worksheet-row-count', { unitId, subUnitId: sheetId, rowCount }, { onlyLocal: true, autoGrow: true } as never);
@@ -383,6 +395,7 @@ class Doc {
       sheets: { sheet1: { id: 'sheet1', name: 'Sheet1', rowCount: 1000, columnCount: 26, defaultColumnWidth: 88, defaultRowHeight: 24 } as IWorksheetData },
     });
     fixThinLines(canvasStretch);
+    quietRenderLoop();
     this.meta = emptyMeta();
     this.origin = null;
     this.names = [];
@@ -446,6 +459,7 @@ class Doc {
     if (threads && Object.keys(threads).length && !resources.some((r) => r.name === RES_THREADS)) resources.push({ name: RES_THREADS, data: withUnitId(JSON.stringify(threads), unitId) });
     const fwb = this.h.api.createWorkbook({ id: unitId, name: file.name, styles: res.styles, sheetOrder: order, sheets, resources, defaultStyle: res.defaultStyle } as Partial<IWorkbookData>);
     fixThinLines(canvasStretch);
+    quietRenderLoop();
     this.meta = { ...emptyMeta(), ...(res.meta ?? {}) };
     this.names = (res.names ?? []).filter((n) => !n.builtin && !n.orphan);
     this.loadWarnings = res.warnings ?? [];
@@ -646,6 +660,7 @@ class Doc {
     this.disposeCurrent();
     const fwb = this.h.api.createWorkbook(s.data);
     fixThinLines(canvasStretch);
+    quietRenderLoop();
     this.meta = { ...emptyMeta(), ...extra.meta };
     this.origin = (await kv.get<Origin>(ORIGIN_KEY).catch(() => undefined)) ?? null;
     this.names = extra.names ?? [];
@@ -718,7 +733,9 @@ class Doc {
   }
 
   syncMetaRenderers() {
+    this.view?.invalidate();
     fixThinLines(canvasStretch);
+    quietRenderLoop();
     setSparklines(this.meta.sparklines ?? []);
     setDrawings(this.meta.drawings, this.meta.drawUnit ?? 'mm');
     try {

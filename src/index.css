@@ -244,10 +244,6 @@ table.preview th { background: var(--surface-2); position: sticky; top: 0; }
 html[data-load='1'] *, html[data-load='2'] * { animation-duration: 0s !important; transition: none !important; }
 
 /* ---------------------------------------------------------------- gestures (grid/compositor.ts, grid/input.ts) */
-.grid-compositor { position: absolute; inset: 0; display: none; overflow: hidden; pointer-events: none; z-index: 3; background: var(--surface); will-change: transform; contain: strict; }
-.gc-clip { position: absolute; overflow: hidden; background: var(--surface); contain: strict; }
-.gc-mover { position: absolute; left: 0; top: 0; width: 1px; height: 1px; will-change: transform; }
-.gc-mover > canvas, .gc-clip > canvas { position: absolute; left: 0; top: 0; }
 .resize-guide { position: absolute; display: none; background: var(--accent); z-index: 4; pointer-events: none; }
 .fbar .kb { font-size: 12px; font-weight: 700; width: 40px; }
 .arg-hint { font-family: ui-monospace, 'Roboto Mono', monospace; font-size: 13px; }
@@ -259,7 +255,7 @@ html[data-load='1'] *, html[data-load='2'] * { animation-duration: 0s !important
 html[data-theme='dark'] .scroll-ind { background: rgba(187, 247, 208, 0.5); }
 
 /* ---------------------------------------------------------------- selection bar, pictures */
-.selbar { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; gap: 8px; align-items: center; justify-content: flex-end; pointer-events: none; z-index: 2; flex-wrap: wrap; }
+.selbar { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; gap: 8px; align-items: center; justify-content: flex-end; pointer-events: none; z-index: 4; flex-wrap: wrap; }
 .status-pill { pointer-events: auto; display: flex; gap: 12px; padding: 6px 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; max-width: 100%; overflow-x: auto; white-space: nowrap; }
 .status-pill b { color: var(--text); font-weight: 600; }
 .link-pill { pointer-events: auto; display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px; border-radius: 20px; border: 0; background: var(--accent); color: var(--on-accent); font-weight: 600; box-shadow: var(--shadow); cursor: pointer; margin-right: auto; }
@@ -303,3 +299,34 @@ html[data-theme='dark'] .scroll-ind { background: rgba(187, 247, 208, 0.5); }
 .seg .chip.on { background: var(--accent-soft); color: var(--accent-strong); border-color: var(--accent); }
 .dialog .check { display: flex; align-items: center; gap: 10px; }
 .dialog .check input { width: 20px; height: 20px; accent-color: var(--accent); }
+
+/* gesture renderer (src/grid/gestureView.ts): panes (clip boxes) with one layer per zoom level of
+   tile canvases, moved and scaled by the compositor; one camera places them all */
+.gesture-surface { position: absolute; left: 0; top: 0; display: none; z-index: 3; overflow: hidden; pointer-events: none; background: var(--gs-bg, var(--surface)); contain: strict; }
+.gs-pane { position: absolute; left: 0; top: 0; overflow: hidden; isolation: isolate; contain: strict; }
+.gs-pane.cells { background: var(--gs-bg, var(--surface)); }
+.gs-pane.header { background: var(--gs-hbg, #f6f8f7); }
+.gs-layer, .gs-snap { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.gs-sel { position: absolute; left: 0; top: 0; box-sizing: border-box; border: 2px solid #15803d; background: rgba(21, 128, 61, 0.07); z-index: 3000; }
+.gs-hsel { position: absolute; left: 0; top: 0; background: rgba(21, 128, 61, 0.1); z-index: 3000; }
+.gs-corner { position: absolute; left: 0; top: 0; background: var(--gs-hbg, #f6f8f7); z-index: 10; }
+.gs-line { position: absolute; left: 0; top: 0; background: var(--gs-line, #e0e3e1); z-index: 10; }
+.gs-line.v { width: 1px; height: 100%; }
+.gs-line.h { height: 1px; width: 100%; }
+.gs-freeze { position: absolute; left: 0; top: 0; background: rgba(30, 41, 35, 0.22); z-index: 10; display: none; }
+.gs-freeze.v { width: 2px; height: 100%; }
+.gs-freeze.h { height: 2px; width: 100%; }
+.grid-wrap.gesturing .fill-handle { visibility: hidden; }
+.zoom-pill { position: absolute; left: 8px; bottom: 10px; z-index: 4; min-width: 58px; height: 32px; padding: 0 12px; border-radius: 16px; background: rgba(20, 35, 26, 0.84); color: #fff; font: 600 13px/32px system-ui, sans-serif; text-align: center; opacity: 0; transition: opacity 0.25s; pointer-events: none; user-select: none; }
+.zoom-pill.on { opacity: 1; pointer-events: auto; cursor: pointer; }
+.zoom-pill::before { content: ''; position: absolute; inset: -6px -4px; } /* 44 px touch target */
+.zoom-panel { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 6; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); padding: 4px 8px 8px; }
+.zoom-row { display: flex; align-items: center; gap: 4px; }
+.zoom-row input[type='range'] { flex: 1; min-width: 0; height: 44px; accent-color: var(--accent); }
+.zoom-row.presets { gap: 6px; margin-top: 2px; }
+.zoom-row.presets .chip { flex: 1; min-width: 0; padding: 0 4px; height: 44px; color: var(--text); }
+.zoom-value { min-width: 54px; text-align: right; font-variant-numeric: tabular-nums; }
+.perf-overlay { position: absolute; right: 6px; top: 6px; z-index: 7; margin: 0; padding: 6px 8px; background: rgba(0, 0, 0, 0.74); color: #c8f7d4; font: 11px/1.4 ui-monospace, 'Roboto Mono', monospace; border-radius: 8px; pointer-events: none; white-space: pre; }
+.switch-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; min-height: 44px; cursor: pointer; }
+.switch-row input { width: 22px; height: 22px; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+.switch-row small { display: block; margin-top: 2px; }

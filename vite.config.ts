@@ -26,8 +26,11 @@ function dropHyphenation(): Plugin {
 // and macros each live in their own Web Worker bundle.
 const ISOLATION = { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'credentialless' };
 
+const VERSION = (JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }).version;
+
 export default defineConfig({
   plugins: [react(), dropHyphenation()],
+  define: { __APP_VERSION__: JSON.stringify(VERSION) }, // shown in About
   base: './',
   build: {
     target: ['es2022', 'chrome100'], // Android System WebView is auto-updated on Android 8+

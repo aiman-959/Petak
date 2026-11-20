@@ -47,9 +47,29 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Restore signing key
+      # docs/RELEASE-SIGNING.md: one release key in four repository secrets signs every build, so each
+      # version installs over the previous one. Without it the runner's debug key (new on every
+      # runner) signs the APKs, and no build installs over another.
+      - name: Restore and check the signing key
         if: env.KEYSTORE_BASE64 != ''
-        run: echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+        env:
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          # pasted text may carry line breaks or Windows line ends
+          printf '%s' "$KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/release.jks" \
+            || { echo "::error::KEYSTORE_BASE64 is not valid base64 (copy all of petak-release.b64)"; exit 1; }
+          if [ -z "$KS_PASS" ] || [ -z "$KS_ALIAS" ]; then
+            echo "::error::KEYSTORE_PASSWORD and KEY_ALIAS secrets are needed with KEYSTORE_BASE64"; exit 1
+          fi
+          keytool -list -keystore "$RUNNER_TEMP/release.jks" -storepass "$KS_PASS" -alias "$KS_ALIAS" > /dev/null \
+            || { echo "::error::The signing key could not be opened: check KEYSTORE_PASSWORD and KEY_ALIAS (alias is usually petak)"; exit 1; }
+
+      - name: Refuse to publish a release without the release key
+        if: startsWith(github.ref, 'refs/tags/v') && env.KEYSTORE_BASE64 == ''
+        run: |
+          echo "::error::Tag builds publish a release and need the release key (docs/RELEASE-SIGNING.md)"
+          exit 1
 
       - name: Build debug and release APKs
         working-directory: android
@@ -70,11 +90,33 @@ jobs:
           for abi in arm64-v8a armeabi-v7a x86_64; do
             cp "android/app/build/outputs/apk/release/app-$abi-release.apk" "out/Petak-v$V-$abi.apk"
           done
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::warning::No release key configured (KEYSTORE_BASE64 secret): release APKs are signed with this runner's debug key."
-          fi
           (cd out && sha256sum *.apk > SHA256SUMS.txt)
           ls -la out
+
+      - name: Signature
+        run: |
+          V=$(node -p "require('./package.json').version")
+          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs "out/Petak-v$V.apk" | tee out/SIGNING.txt
+          "$APKSIGNER" verify --print-certs "out/Petak-v$V-debug.apk" | sed 's/^/debug APK: /' >> out/SIGNING.txt
+          SHA=$(grep -m1 'SHA-256 digest' out/SIGNING.txt | sed 's/.*: //')
+          {
+            echo "## Signing"
+            if [ -n "$KEYSTORE_BASE64" ]; then
+              echo "Signed with the **release key** (repository secrets). Certificate SHA-256:"
+              echo
+              echo "\`$SHA\`"
+              echo
+              echo "This must be the same for every build: then each version installs over the previous one."
+            else
+              echo "> [!CAUTION]"
+              echo "> **No release key** (KEYSTORE_BASE64 secret not set): these APKs are signed with this runner's"
+              echo "> throwaway debug key ($SHA). They will not install over any other build. See docs/RELEASE-SIGNING.md."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::No release key configured (KEYSTORE_BASE64 secret): APKs are signed with this runner's debug key and will not install over other builds."
+          fi
 
       - name: Size report
         run: |
@@ -87,6 +129,7 @@ jobs:
           path: |
             out/*.apk
             out/SHA256SUMS.txt
+            out/SIGNING.txt
             out/SIZE.md
 
       - name: Publish GitHub Release
@@ -96,6 +139,7 @@ jobs:
           files: |
             out/*.apk
             out/SHA256SUMS.txt
+            out/SIGNING.txt
             out/SIZE.md
           generate_release_notes: true
 

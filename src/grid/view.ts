@@ -4,6 +4,7 @@
  * columns the grid has up to four panes that scroll differently.
  */
 import { IRenderManagerService } from '@univerjs/engine-render';
+import { SheetScrollManagerService } from '@univerjs/sheets-ui';
 import { doc } from '../state/doc';
 
 interface UViewport {
@@ -196,14 +197,51 @@ export function scrollTo(v: ViewInfo, sx: number, sy: number) {
   const y = Math.max(0, sy - v.frozenH / v.zoom);
   const c = Math.min(indexAt(v.colAcc, x), v.colAcc.length - 1);
   const r = Math.min(indexAt(v.rowAcc, y), v.rowAcc.length - 1);
+  const offsetX = Math.max(0, x - at(v.colAcc, c));
+  const offsetY = Math.max(0, y - at(v.rowAcc, r));
   doc.api.executeCommand('sheet.operation.set-scroll', {
     unitId: wb.getId(),
     sheetId: wb.getActiveSheet().getSheetId(),
     sheetViewStartRow: r,
     sheetViewStartColumn: c,
-    offsetX: Math.max(0, x - at(v.colAcc, c)),
-    offsetY: Math.max(0, y - at(v.rowAcc, r)),
+    offsetX,
+    offsetY,
   });
+  // Frozen columns wider than the screen (e.g. the roster at 200 % in portrait) leave Univer's
+  // scrolling pane with no width: Univer then ignores every scroll, also the vertical one, and the
+  // sheet cannot be scrolled at all (P-02). Excel still scrolls the rows: set the panes' scroll
+  // the way Univer does it itself after a layout change, and keep it as Univer's scroll state.
+  const unit = renderUnit() as unknown as { scene: { getViewport(k: string): (UViewport & { viewportScrollX: number; viewportScrollY: number }) | undefined }; with?: <T>(t: unknown) => T } | null;
+  const main = unit?.scene.getViewport('viewMain');
+  if (unit && main && !main.isActive) {
+    const vx = at(v.colAcc, c) + offsetX;
+    const vy = at(v.rowAcc, r) + offsetY;
+    main.viewportScrollX = vx;
+    main.viewportScrollY = vy;
+    const set = (key: string, axis: 'x' | 'y') => {
+      const vp = unit.scene.getViewport(key);
+      if (vp) vp[axis === 'x' ? 'viewportScrollX' : 'viewportScrollY'] = axis === 'x' ? vx : vy;
+    };
+    set('viewRowBottom', 'y');
+    set('viewMainLeft', 'y');
+    set('viewColumnRight', 'x');
+    set('viewMainTop', 'x');
+    try {
+      unit.with?.<{ setValidScrollStateToCurrSheet(s: object): void }>(SheetScrollManagerService).setValidScrollStateToCurrSheet({
+        sheetViewStartRow: r,
+        sheetViewStartColumn: c,
+        offsetX,
+        offsetY,
+        viewportScrollX: vx,
+        viewportScrollY: vy,
+        scrollX: 0,
+        scrollY: 0,
+      });
+    } catch (e) {
+      console.warn('scroll state', e);
+    }
+    (unit.scene as unknown as UScene).makeDirty(true);
+  }
 }
 /**
  * Thin lines on a stretched canvas (K-08). On Low / Mid tiers the grid canvas has fewer pixels
@@ -226,6 +264,110 @@ export function fixThinLines(stretch: number) {
     proto.__petakOrig = orig; // tests switch the fix off to prove they see the difference
   } catch (e) {
     console.warn('line fix not applied', e);
+  }
+}
+interface ULoopScene {
+  isDirty(): boolean;
+  getLayers(): object[];
+}
+interface ULoopEngine {
+  _renderFunction: (t: number) => void;
+  _renderingQueueLaunched: boolean;
+  _renderFrameTasks: unknown[];
+  _scenes?: Record<string, ULoopScene>;
+  startRenderLoop(): void;
+  __petakQuiet?: { paused: boolean; idle: number };
+}
+let quietTimer = 0;
+const watching = new WeakSet<object>();
+const quietEngines = new Set<ULoopEngine>();
+function wake(e: ULoopEngine | null | undefined) {
+  const q = e?.__petakQuiet;
+  if (!q?.paused) return;
+  q.paused = false;
+  q.idle = 0;
+  e!.startRenderLoop();
+}
+
+/**
+ * Univer draws the grid from a requestAnimationFrame loop that never stops: 60 (on a 120 Hz screen
+ * 120) callbacks a second while nothing changes. Each one makes the browser commit a frame, and every
+ * commit copies the grid's canvas (measured: 60 commits and 60 canvas copies a second with the app
+ * idle, 90 ms of main-thread time per second here): CPU time and battery for nothing. This stops
+ * an engine's loop after a few frames with nothing to draw and starts it again the moment anything
+ * on its scenes is marked dirty (Univer marks its layers dirty for every change it wants drawn).
+ */
+export function quietRenderLoop() {
+  try {
+    // every render unit: the workbook's, and the documents of Univer's cell editors
+    const inj = (doc.api as unknown as { _injector: { get<X>(t: unknown): X } })._injector;
+    const rm = inj.get<{ getRenderAll(): Map<string, unknown>; created$?: { subscribe(f: () => void): unknown } }>(IRenderManagerService);
+    for (const unit of rm.getRenderAll().values()) quiet(unit as { engine: ULoopEngine; scene: ULoopScene });
+    // render units made later (a new workbook's grid appears a moment after the workbook)
+    if (!watching.has(rm) && rm.created$) {
+      watching.add(rm);
+      rm.created$.subscribe(() => setTimeout(quietRenderLoop, 0));
+    }
+  } catch (err) {
+    console.warn('render loop not quietened', err);
+  }
+}
+function quiet(unit: { engine: ULoopEngine; scene: ULoopScene } | null) {
+  try {
+    const e = unit?.engine;
+    if (!unit || !e || e.__petakQuiet || typeof e._renderFunction !== 'function') return;
+    const layer = unit.scene.getLayers()[0] as { makeDirty?: (s?: boolean) => unknown } | undefined;
+    const proto = layer && (Object.getPrototypeOf(layer) as { makeDirty?: (s?: boolean) => unknown; __petakWake?: boolean });
+    if (!proto?.makeDirty) return;
+    if (!proto.__petakWake) {
+      const md = proto.makeDirty;
+      proto.makeDirty = function (this: { scene?: { getEngine?(): ULoopEngine | null } }, state = true) {
+        const r = md.call(this, state);
+        if (state !== false) wake(this.scene?.getEngine?.());
+        return r;
+      };
+      proto.__petakWake = true;
+    }
+    const q: { paused: boolean; idle: number } = { paused: false, idle: 0 };
+    e.__petakQuiet = q;
+    const run = e._renderFunction;
+    const dirty = () => Object.values(e._scenes ?? {}).some((sc) => sc.isDirty());
+    e._renderFunction = (t: number) => {
+      if (dirty()) q.idle = 0;
+      else if (++q.idle > 12 && e._renderFrameTasks.length) {
+        e._renderingQueueLaunched = false; // Univer's own "loop not running" state
+        q.paused = true;
+        return;
+      }
+      run(t);
+    };
+    quietEngines.add(e);
+    // a safety net for anything that makes a scene dirty another way: look 4 times a second
+    if (!quietTimer)
+      quietTimer = window.setInterval(() => {
+        for (const en of quietEngines) {
+          if (!en._scenes) quietEngines.delete(en);
+          else if (en.__petakQuiet?.paused && Object.values(en._scenes).some((sc) => sc.isDirty())) wake(en);
+        }
+      }, 250);
+  } catch (err) {
+    console.warn('render loop not quietened', err);
+  }
+}
+
+/**
+ * Set Univer's zoom. Resolves false instead of throwing when Univer is not ready for it yet: its
+ * zoom controller is registered a moment after a workbook appears, and a zoom sent before that
+ * (a pinch right after a file opened) failed with an uncaught error (P-03).
+ */
+export function setUniverZoom(z: number): Promise<boolean> {
+  try {
+    const wb = doc.wb;
+    return Promise.resolve(doc.api.executeCommand('sheet.operation.set-zoom-ratio', { zoomRatio: z, unitId: wb.getId(), subUnitId: wb.getActiveSheet().getSheetId() }))
+      .then((ok) => !!ok)
+      .catch(() => false);
+  } catch {
+    return Promise.resolve(false);
   }
 }
 /** Sheet position at the main pane's top-left corner. */

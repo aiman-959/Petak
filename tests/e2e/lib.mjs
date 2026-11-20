@@ -14,7 +14,7 @@ export async function start(name, profile = 'phone', extra = {}) {
   const page = await ctx.newPage();
   const errors = [];
   let current = '';
-  page.on('pageerror', (e) => errors.push(`[${current}] ${e.message}`));
+  page.on('pageerror', (e) => errors.push(`[${current}] ${e.message}\n      ${(e.stack ?? '').split("\n").slice(1, 16).join('\n      ')}`));
   const results = [];
   const only = process.env.ONLY ? new RegExp(process.env.ONLY, 'i') : null;
   const step = async (title, fn) => {

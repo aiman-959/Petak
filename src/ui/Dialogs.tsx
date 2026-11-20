@@ -316,7 +316,7 @@ export function AboutDialog() {
   return (
     <Dialog title="About Petak" onClose={close} testId="dlg-about">
       <p>
-        <b>Petak</b> — an open-source spreadsheet for Android phones and tablets. Licensed under the GNU GPL v3.
+        <b>Petak</b> <span data-testid="app-version">{__APP_VERSION__}</span> — an open-source spreadsheet for Android phones and tablets. Licensed under the GNU GPL v3.
       </p>
       <h4>This device</h4>
       <table className="preview">
